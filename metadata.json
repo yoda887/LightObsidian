@@ -1,0 +1,6 @@
+{
+  "name": "Lite Obsidian",
+  "description": "A lightweight, beautiful, minimalist analog of Obsidian. Take notes with Markdown and wikilinks, view them in an interactive graph, and export the entire app with your notes as a single, fully self-contained HTML/HTA file.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
