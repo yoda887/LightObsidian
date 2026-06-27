@@ -6,12 +6,13 @@
 import React, { useEffect, useState, useRef } from "react";
 import { Note } from "../types";
 import { parseMarkdownToHtml } from "../utils";
-import { CustomWYSIWYG } from "./CustomWYSIWYG";
+import { CustomWYSIWYG, CustomWYSIWYGRef } from "./CustomWYSIWYG";
 import {
   Heading1,
   Bold,
   Italic,
   Code,
+  Link,
   Link2,
   Quote,
   Eye,
@@ -40,7 +41,26 @@ export default function Editor({
   onWikilinkClick,
 }: EditorProps) {
   const [htmlContent, setHtmlContent] = useState("");
+  const [localTitle, setLocalTitle] = useState(note.title);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const wysiwygRef = useRef<CustomWYSIWYGRef | null>(null);
+
+  // Sync local title when note changes
+  useEffect(() => {
+    setLocalTitle(note.title);
+  }, [note.id, note.title]);
+
+  const handleTitleBlur = () => {
+    if (localTitle.trim() !== note.title.trim()) {
+      onUpdateNote(note.id, { title: localTitle });
+    }
+  };
+
+  const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
+    }
+  };
 
   // Parse markdown asynchronously when note content changes
   useEffect(() => {
@@ -59,6 +79,11 @@ export default function Editor({
 
   // Insert markdown helper buttons
   const insertMarkdown = (before: string, after: string = "") => {
+    if (mode === "dynamic") {
+      wysiwygRef.current?.insertMarkdown(before, after);
+      return;
+    }
+
     const textarea = textareaRef.current;
     if (!textarea) return;
 
@@ -104,7 +129,10 @@ export default function Editor({
       <div className="bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 px-4 py-2 flex items-center justify-between shrink-0 shadow-sm">
         
         {/* Editor controls / formatting helpers */}
-        <div className="flex items-center space-x-1.5 overflow-x-auto py-1">
+        <div 
+          className="flex items-center space-x-1.5 overflow-x-auto py-1"
+          onMouseDown={(e) => e.preventDefault()}
+        >
           <button
             onClick={() => insertMarkdown("## ")}
             className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded text-slate-600 dark:text-zinc-300 transition-colors cursor-pointer"
@@ -140,6 +168,13 @@ export default function Editor({
           >
             <Code className="w-4 h-4" />
           </button>
+          <button
+            onClick={() => insertMarkdown("[", "](https://)")}
+            className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded text-slate-600 dark:text-zinc-300 transition-colors cursor-pointer"
+            title="External Link"
+          >
+            <Link className="w-4 h-4" />
+          </button>
           <div className="h-4 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />
           <button
             onClick={() => insertMarkdown("[[", "]]")}
@@ -163,8 +198,10 @@ export default function Editor({
             {/* Note Title Input */}
             <input
               type="text"
-              value={note.title}
-              onChange={(e) => onUpdateNote(note.id, { title: e.target.value })}
+              value={localTitle}
+              onChange={(e) => setLocalTitle(e.target.value)}
+              onBlur={handleTitleBlur}
+              onKeyDown={handleTitleKeyDown}
               placeholder="Note Title"
               className="w-full bg-transparent text-2xl font-bold border-none outline-none focus:ring-0 mb-4 text-slate-900 dark:text-white placeholder-slate-300 dark:placeholder-zinc-700"
             />
@@ -175,7 +212,8 @@ export default function Editor({
               value={note.content}
               onChange={(e) => onUpdateNote(note.id, { content: e.target.value })}
               placeholder="Start writing... Type [[Other Note]] to create/link notes."
-              className="flex-1 w-full bg-transparent border-none outline-none resize-none focus:ring-0 font-mono text-sm leading-relaxed overflow-y-auto text-slate-800 dark:text-zinc-200 placeholder-slate-300 dark:placeholder-zinc-700"
+              className="flex-1 w-full bg-transparent border-none outline-none resize-none focus:ring-0 text-sm leading-relaxed overflow-y-auto text-slate-800 dark:text-zinc-200 placeholder-slate-300 dark:placeholder-zinc-700"
+              style={{ fontFamily: 'var(--font-editor, inherit)' }}
             />
           </div>
         )}
@@ -189,8 +227,10 @@ export default function Editor({
             {/* Note Title Input */}
             <input
               type="text"
-              value={note.title}
-              onChange={(e) => onUpdateNote(note.id, { title: e.target.value })}
+              value={localTitle}
+              onChange={(e) => setLocalTitle(e.target.value)}
+              onBlur={handleTitleBlur}
+              onKeyDown={handleTitleKeyDown}
               placeholder="Note Title"
               className="w-full bg-transparent text-2xl font-bold border-none outline-none focus:ring-0 mb-4 text-slate-900 dark:text-white placeholder-slate-300 dark:placeholder-zinc-700"
             />
@@ -210,8 +250,10 @@ export default function Editor({
             <div className="px-4 sm:px-6 pt-4 sm:pt-6 shrink-0">
               <input
                 type="text"
-                value={note.title}
-                onChange={(e) => onUpdateNote(note.id, { title: e.target.value })}
+                value={localTitle}
+                onChange={(e) => setLocalTitle(e.target.value)}
+                onBlur={handleTitleBlur}
+                onKeyDown={handleTitleKeyDown}
                 placeholder="Note Title"
                 className="w-full bg-transparent text-2xl font-bold border-none outline-none focus:ring-0 mb-4 text-slate-900 dark:text-white placeholder-slate-300 dark:placeholder-zinc-700"
               />
@@ -220,7 +262,8 @@ export default function Editor({
             {/* Custom WYSIWYG Editor */}
             <div className="flex-1 overflow-hidden">
               <CustomWYSIWYG 
-                key={note.id} 
+                ref={wysiwygRef}
+                key={note.createdAt} 
                 content={note.content} 
                 notes={notes}
                 onChange={(newContent) => onUpdateNote(note.id, { content: newContent })} 

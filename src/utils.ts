@@ -24,7 +24,7 @@ export function extractWikilinks(content: string): string[] {
  */
 export async function parseMarkdownToHtml(content: string): Promise<string> {
   // Parse standard Markdown
-  let parsed = await marked.parse(content);
+  let parsed = await marked.parse(content, { breaks: true, gfm: true });
   
   // Replace tags: #word
   // Using prefix matching (^|\s|>) to safely target text nodes and avoid hex colors
@@ -495,7 +495,7 @@ export function generateSingleHtmlApp(notes: Note[]): string {
       document.getElementById("preview-title").innerText = note.title || "Untitled Note";
 
       // HTML Render
-      let rawHtml = marked.parse(note.content || "");
+      let rawHtml = marked.parse(note.content || "", { breaks: true, gfm: true });
       
       // Parse [[Wikilinks]]
       const wikilinkRegex = /\\\\\\[\\\\\\[([^\\\\\\]|]+)(?:\\\\|[^\\\\\\]]+)?\\\\\\]\\\\\\]/g;

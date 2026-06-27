@@ -1,5 +1,9 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { Note } from '../types';
+
+export interface CustomWYSIWYGRef {
+  insertMarkdown: (before: string, after?: string) => void;
+}
 
 interface CustomWYSIWYGProps {
   content: string;
@@ -48,6 +52,7 @@ const highlightMarkdown = (text: string) => {
     processed = processed.replace(/\*(.*?)\*/g, '<span class="md-italic"><span class="md-token">*</span>$1<span class="md-token">*</span></span>');
     processed = processed.replace(/`(.*?)`/g, '<span class="md-code"><span class="md-token">`</span>$1<span class="md-token">`</span></span>');
     processed = processed.replace(/\[\[(.*?)\]\]/g, '<span class="md-wikilink cursor-pointer hover:underline" data-note="$1"><span class="md-token">[[</span>$1<span class="md-token">]]</span></span>');
+    processed = processed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-extlink cursor-pointer text-blue-600 dark:text-blue-400 hover:underline"><span class="md-token">[</span>$1<span class="md-token">](</span><span class="md-token opacity-50 text-xs">$2</span><span class="md-token">)</span></a>');
 
     return `<span>${processed}</span>`;
   });
@@ -56,10 +61,11 @@ const highlightMarkdown = (text: string) => {
   return highlightedLines.join('\n') + '<br/>';
 };
 
-export const CustomWYSIWYG: React.FC<CustomWYSIWYGProps> = ({ content, notes, onChange, onWikilinkClick }) => {
-  const editorRef = useRef<HTMLDivElement>(null);
-  const isComposing = useRef(false);
-  const previousContent = useRef(content);
+export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
+  ({ content, notes, onChange, onWikilinkClick }, ref) => {
+    const editorRef = useRef<HTMLDivElement>(null);
+    const isComposing = useRef(false);
+    const previousContent = useRef(content);
   
   const [autocomplete, setAutocomplete] = useState<AutocompleteState>({
     active: false,
@@ -76,6 +82,55 @@ export const CustomWYSIWYG: React.FC<CustomWYSIWYGProps> = ({ content, notes, on
       previousContent.current = content;
     }
   }, [content]);
+
+  useImperativeHandle(ref, () => ({
+    insertMarkdown: (before: string, after: string = "") => {
+      const el = editorRef.current;
+      if (!el) return;
+      
+      const sel = window.getSelection();
+      let start = 0;
+      let end = 0;
+      let selectedText = "";
+      
+      const currentText = el.textContent || "";
+      
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        if (el.contains(range.commonAncestorContainer)) {
+          try {
+            const preSelectionRange = range.cloneRange();
+            preSelectionRange.selectNodeContents(el);
+            preSelectionRange.setEnd(range.startContainer, range.startOffset);
+            start = preSelectionRange.toString().length;
+            selectedText = sel.toString();
+            end = start + selectedText.length;
+          } catch(e) {
+            start = currentText.length;
+            end = start;
+          }
+        } else {
+          start = currentText.length;
+          end = start;
+        }
+      } else {
+        start = currentText.length;
+        end = start;
+      }
+      
+      const replacement = before + selectedText + after;
+      const newText = currentText.substring(0, start) + replacement + currentText.substring(end);
+      
+      previousContent.current = newText;
+      onChange(newText);
+      
+      if (el) {
+        el.innerHTML = highlightMarkdown(newText);
+        setCaretOffset(start + before.length + selectedText.length);
+        setTimeout(() => el.focus(), 0);
+      }
+    }
+  }));
 
   const getCaretOffset = (): number => {
     const el = editorRef.current;
@@ -290,6 +345,12 @@ export const CustomWYSIWYG: React.FC<CustomWYSIWYGProps> = ({ content, notes, on
         }
       }
     }
+
+    const extLinkEl = target.closest(".md-extlink") as HTMLAnchorElement;
+    if (extLinkEl && (e.ctrlKey || e.metaKey || true)) {
+      e.preventDefault();
+      window.open(extLinkEl.href, '_blank', 'noopener,noreferrer');
+    }
   };
 
   // Render Autocomplete Dropdown
@@ -363,10 +424,11 @@ export const CustomWYSIWYG: React.FC<CustomWYSIWYGProps> = ({ content, notes, on
           isComposing.current = false;
           handleInput();
         }}
-        className="custom-wysiwyg w-full h-full px-4 sm:px-6 pb-4 sm:pb-6 pt-0 overflow-y-auto outline-none whitespace-pre-wrap font-mono text-sm leading-relaxed text-slate-800 dark:text-zinc-200"
+        className="custom-wysiwyg w-full h-full px-4 sm:px-6 pb-4 sm:pb-6 pt-0 overflow-y-auto outline-none whitespace-pre-wrap text-sm leading-relaxed text-slate-800 dark:text-zinc-200"
+        style={{ fontFamily: 'var(--font-editor, inherit)' }}
         spellCheck={false}
       />
       {renderAutocomplete()}
     </>
   );
-};
+});

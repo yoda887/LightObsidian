@@ -5,7 +5,7 @@
 
 import { useState } from "react";
 import { Note } from "../types";
-import { Search, Plus, Trash2, BookOpen, Download, Sun, Moon, ChevronRight, ChevronDown, FileEdit, FolderPlus } from "lucide-react";
+import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus } from "lucide-react";
 
 interface SidebarProps {
   notes: Note[];
@@ -115,6 +115,7 @@ const FileTreeNodeComponent = ({
   onDeleteNote,
   searchActive
 }: {
+  key?: string;
   node: TreeNode;
   depth: number;
   currentNoteId: string;
@@ -199,64 +200,63 @@ export default function Sidebar({
   vaultName,
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   const treeRoot = buildFileTree(notes, folders, searchQuery);
 
   return (
     <aside className="w-64 bg-slate-50 dark:bg-zinc-950 border-r border-slate-200 dark:border-zinc-800 flex flex-col shrink-0 h-full">
-      {/* Sidebar Header Brand */}
-      <div className="p-4 border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between bg-slate-50 dark:bg-zinc-950 select-none">
-        <div className="flex items-center space-x-2">
-          <div className="bg-indigo-600 p-1.5 rounded text-white flex items-center justify-center">
-            <BookOpen className="w-4 h-4" />
-          </div>
-          <div>
-            <h1 className="text-xs font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-widest">Lite Obsidian</h1>
-            <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-mono uppercase tracking-wider">Local Vault</p>
-          </div>
-        </div>
-
-        {/* Theme Toggle Button */}
-        <button
-          onClick={onToggleTheme}
-          className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded transition-colors cursor-pointer"
-          title={darkMode ? "Switch to light theme" : "Switch to dark theme"}
-        >
-          {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-        </button>
-      </div>
-
       {/* Search Input Box */}
-      <div className="p-4 border-b border-slate-200 dark:border-zinc-800/80 space-y-3">
+      <div className={`px-4 border-b border-slate-200 dark:border-zinc-800/80 flex flex-col justify-center ${isSearchOpen ? 'py-2 space-y-2' : 'h-10'}`}>
         {/* Workspace Toolbar */}
-        <div className="flex items-center justify-center space-x-0.5">
+        <div className="flex items-center justify-between">
           <button
-            onClick={() => onCreateNote()}
-            className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded transition-colors cursor-pointer"
-            title="New Note"
+            onClick={() => {
+              setIsSearchOpen(!isSearchOpen);
+              if (isSearchOpen) setSearchQuery("");
+            }}
+            className={`p-1.5 rounded transition-colors cursor-pointer ${
+              isSearchOpen 
+                ? "text-indigo-600 bg-indigo-50 dark:text-indigo-400 dark:bg-indigo-900/20" 
+                : "text-slate-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 hover:bg-slate-200 dark:hover:bg-zinc-800"
+            }`}
+            title="Search Notes"
           >
-            <FileEdit className="w-4 h-4" />
+            <Search className="w-4 h-4" />
           </button>
           
-          <button
-            onClick={() => alert("Creating folders will be implemented later!")}
-            className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded transition-colors cursor-pointer"
-            title="New Folder"
-          >
-            <FolderPlus className="w-4 h-4" />
-          </button>
+          <div className="flex items-center space-x-0.5">
+            <button
+              onClick={() => onCreateNote()}
+              className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded transition-colors cursor-pointer"
+              title="New Note"
+            >
+              <FileEdit className="w-4 h-4" />
+            </button>
+            
+            <button
+              onClick={() => alert("Creating folders will be implemented later!")}
+              className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded transition-colors cursor-pointer"
+              title="New Folder"
+            >
+              <FolderPlus className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Search notes..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded px-3 py-1.5 pl-8 text-xs placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-indigo-500 text-slate-800 dark:text-zinc-100 transition-colors"
-          />
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-        </div>
+        {isSearchOpen && (
+          <div className="relative">
+            <input
+              type="text"
+              autoFocus
+              placeholder="Search notes..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded px-3 py-1.5 pl-8 text-xs placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-indigo-500 text-slate-800 dark:text-zinc-100 transition-colors"
+            />
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+          </div>
+        )}
       </div>
 
       {/* Notes List Scroll Area */}

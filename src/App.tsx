@@ -3,14 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Note } from "./types";
 import { generateSingleHtmlApp } from "./utils";
+import { getAllNotes, putNote, deleteNote, clearNotes } from "./db";
 import Sidebar from "./components/Sidebar";
 import Editor from "./components/Editor";
 import GraphView from "./components/GraphView";
 import RightSidebar from "./components/RightSidebar";
-import { Map, FileText, Settings, Download, BookOpen, PanelRight, Edit3, Columns, Eye, X, Zap } from "lucide-react";
+import SettingsDialog, { AppSettings } from "./components/SettingsDialog";
+import { Map, FileText, Settings, Download, BookOpen, PanelRight, Edit3, Columns, Eye, X, Zap, Sun, Moon, Type } from "lucide-react";
 
 // Default placeholder notes to guide the user
 const DEFAULT_NOTES: Note[] = [
@@ -100,10 +102,13 @@ export default function App() {
   const [currentNoteId, setCurrentNoteId] = useState<string>("");
   const [openNoteIds, setOpenNoteIds] = useState<string[]>([]);
   const [darkMode, setDarkMode] = useState<boolean>(false);
+  const [typewriterMode, setTypewriterMode] = useState<boolean>(false);
   const [appMode, setAppMode] = useState<"edit" | "preview" | "split" | "graph" | "dynamic">("split");
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState<boolean>(false);
   const [vaultHandle, setVaultHandle] = useState<any>(null);
   const [folders, setFolders] = useState<string[]>([]);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [appSettings, setAppSettings] = useState<AppSettings>({ font: "inter" });
 
   useEffect(() => {
     if (darkMode) {
@@ -169,7 +174,8 @@ export default function App() {
       if (loadedNotes.length > 0) {
         setNotes(loadedNotes);
         setCurrentNoteId(loadedNotes[0].id);
-        localStorage.setItem("lite_obsidian_react_notes", JSON.stringify(loadedNotes));
+        await clearNotes();
+        for (const n of loadedNotes) await putNote(n);
       } else {
         setNotes([]);
         setCurrentNoteId("");
@@ -181,27 +187,50 @@ export default function App() {
 
   // Load notes and theme on initial load
   useEffect(() => {
-    const storedNotes = localStorage.getItem("lite_obsidian_react_notes");
-    if (storedNotes) {
+    const initData = async () => {
       try {
-        const parsed = JSON.parse(storedNotes);
-        setNotes(parsed);
-        if (parsed.length > 0) {
-          setCurrentNoteId(parsed[0].id);
-          setOpenNoteIds([parsed[0].id]);
+        const dbNotes = await getAllNotes();
+        if (dbNotes.length > 0) {
+          setNotes(dbNotes);
+          setCurrentNoteId(dbNotes[0].id);
+          setOpenNoteIds([dbNotes[0].id]);
+        } else {
+          const storedNotes = localStorage.getItem("lite_obsidian_react_notes");
+          if (storedNotes) {
+            try {
+              const parsed = JSON.parse(storedNotes);
+              if (parsed.length > 0) {
+                setNotes(parsed);
+                setCurrentNoteId(parsed[0].id);
+                setOpenNoteIds([parsed[0].id]);
+                for (const note of parsed) await putNote(note);
+                localStorage.removeItem("lite_obsidian_react_notes");
+                return;
+              }
+            } catch (e) {
+              console.error("Migration parse error", e);
+            }
+          }
+          setNotes(DEFAULT_NOTES);
+          if (DEFAULT_NOTES.length > 0) {
+            setCurrentNoteId(DEFAULT_NOTES[0].id);
+            setOpenNoteIds([DEFAULT_NOTES[0].id]);
+            for (const note of DEFAULT_NOTES) await putNote(note);
+          }
         }
-      } catch (e) {
-        setNotes(DEFAULT_NOTES);
-        if (DEFAULT_NOTES.length > 0) {
-          setCurrentNoteId(DEFAULT_NOTES[0].id);
-          setOpenNoteIds([DEFAULT_NOTES[0].id]);
-        }
+      } catch (err) {
+        console.error("DB init error", err);
       }
-    } else {
-      setNotes(DEFAULT_NOTES);
-      if (DEFAULT_NOTES.length > 0) {
-        setCurrentNoteId(DEFAULT_NOTES[0].id);
-        setOpenNoteIds([DEFAULT_NOTES[0].id]);
+    };
+    initData();
+
+    // Load app settings
+    const savedSettings = localStorage.getItem("lite_obsidian_settings");
+    if (savedSettings) {
+      try {
+        setAppSettings(JSON.parse(savedSettings));
+      } catch (e) {
+        console.error("Failed to load settings", e);
       }
     }
 
@@ -217,11 +246,25 @@ export default function App() {
     }
   }, []);
 
-  // Save notes to localStorage whenever they change
-  const saveNotes = (updatedNotes: Note[]) => {
-    setNotes(updatedNotes);
-    localStorage.setItem("lite_obsidian_react_notes", JSON.stringify(updatedNotes));
-  };
+  // Apply font setting
+  useEffect(() => {
+    let fontFamily = '"Inter", ui-sans-serif, system-ui, sans-serif';
+    if (appSettings.font === "system") {
+      fontFamily = 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    } else if (appSettings.font === "serif") {
+      fontFamily = 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif';
+    } else if (appSettings.font === "mono") {
+      fontFamily = '"JetBrains Mono", ui-monospace, SFMono-Regular, monospace';
+    }
+    
+    // Clear any previous global overrides so UI goes back to default (Inter)
+    document.documentElement.style.removeProperty('--font-sans');
+    
+    // Set custom variable for editor
+    document.documentElement.style.setProperty('--font-editor', fontFamily);
+    
+    localStorage.setItem("lite_obsidian_settings", JSON.stringify(appSettings));
+  }, [appSettings]);
 
   // Toggle theme
   const handleToggleTheme = () => {
@@ -267,7 +310,7 @@ export default function App() {
 
     const updated = [...notes, newNote];
     setNotes(updated);
-    localStorage.setItem("lite_obsidian_react_notes", JSON.stringify(updated));
+    putNote(newNote).catch(console.error);
 
     if (vaultHandle) {
       try {
@@ -301,7 +344,7 @@ export default function App() {
       const noteToDelete = notes.find(n => n.id === id);
       const filtered = notes.filter(n => n.id !== id);
       setNotes(filtered);
-      localStorage.setItem("lite_obsidian_react_notes", JSON.stringify(filtered));
+      deleteNote(id).catch(console.error);
       
       if (vaultHandle && noteToDelete) {
         try {
@@ -371,7 +414,19 @@ export default function App() {
     if (!updatedNote) return;
 
     setNotes(updated);
-    localStorage.setItem("lite_obsidian_react_notes", JSON.stringify(updated));
+    
+    // Update active IDs synchronously before async ops to prevent Editor unmount blinking
+    if (filenameChanged) {
+      if (currentNoteId === id) {
+        setCurrentNoteId(updatedNote.id);
+      }
+      setOpenNoteIds(prev => prev.map(tabId => tabId === id ? updatedNote!.id : tabId));
+    }
+
+    if (filenameChanged && oldNote) {
+      deleteNote(oldNote.id).catch(console.error);
+    }
+    putNote(updatedNote).catch(console.error);
 
     if (vaultHandle && updatedNote && oldNote) {
       try {
@@ -394,10 +449,6 @@ export default function App() {
       } catch (err) {
         console.error("Failed to save to vault", err);
       }
-    }
-
-    if (filenameChanged && currentNoteId === id) {
-      setCurrentNoteId(updatedNote.id);
     }
   };
 
@@ -432,13 +483,41 @@ export default function App() {
   const charCount = currentNote ? (currentNote.content || "").length : 0;
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-white dark:bg-zinc-950 text-slate-800 dark:text-zinc-200 transition-colors duration-200 font-sans">
+    <div className={`flex flex-col h-screen w-screen overflow-hidden bg-white dark:bg-zinc-950 text-slate-800 dark:text-zinc-200 transition-colors duration-200 ${typewriterMode ? 'typewriter-mode' : 'font-sans'}`}>
       
       {/* Top Application Bar */}
       <div className="relative h-10 shrink-0 flex items-center px-4 bg-slate-50 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 select-none">
-        <div className="flex-1"></div>
+        <div className="flex-1 flex items-center space-x-1">
+          <button
+            onClick={handleToggleTheme}
+            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded transition-colors cursor-pointer"
+            title={darkMode ? "Switch to light theme" : "Switch to dark theme"}
+          >
+            {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+          
+          <button
+            onClick={() => setTypewriterMode(!typewriterMode)}
+            className={`p-1.5 rounded transition-colors cursor-pointer ${
+              typewriterMode 
+                ? "text-indigo-600 bg-indigo-50 dark:text-indigo-400 dark:bg-indigo-900/20" 
+                : "text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 hover:bg-slate-200 dark:hover:bg-zinc-800"
+            }`}
+            title={typewriterMode ? "Disable typewriter font" : "Enable typewriter font"}
+          >
+            <Type className="w-4 h-4" />
+          </button>
+          
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded transition-colors cursor-pointer"
+            title="Settings"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+        </div>
         
-        <div className="absolute left-1/2 -translate-x-1/2 flex bg-slate-200/60 dark:bg-zinc-800 p-0.5 rounded">
+        <div className="absolute left-1/2 -translate-x-1/2 flex bg-slate-200/60 dark:bg-zinc-800 p-0.5 rounded z-10">
             <button
               onClick={() => setAppMode("edit")}
               className={`flex items-center space-x-1.5 px-3 py-1 rounded text-xs font-semibold transition-all cursor-pointer ${
@@ -540,16 +619,22 @@ export default function App() {
           
           {/* TABS BAR */}
           {openNoteIds.length > 0 && appMode !== "graph" && (
-            <div className="bg-slate-50 dark:bg-zinc-900/50 border-b border-slate-200 dark:border-zinc-800 shrink-0">
-              <div className="flex overflow-x-auto select-none pt-1.5 px-2 gap-1 scrollbar-hide -mb-[1px]">
-                {openNoteIds.map(id => {
+            <div className="h-10 flex items-end bg-slate-50 dark:bg-zinc-900/50 border-b border-slate-200 dark:border-zinc-800 shrink-0">
+              <div className="flex overflow-x-auto select-none px-2 gap-1 scrollbar-hide -mb-[1px] w-full">
+                {openNoteIds.map((id, index) => {
                   const n = notes.find(n => n.id === id);
                   if (!n) return null;
                   const isActive = id === currentNoteId;
+                  const prevIsActive = index > 0 && openNoteIds[index - 1] === currentNoteId;
+                  const showDivider = index > 0 && !isActive && !prevIsActive;
+
                   return (
-                    <div
-                      key={id}
-                      onClick={() => handleSelectNote(id)}
+                    <React.Fragment key={id}>
+                      {showDivider && (
+                        <div className="w-px h-4 bg-slate-300 dark:bg-zinc-700 my-auto shrink-0" />
+                      )}
+                      <div
+                        onClick={() => handleSelectNote(id)}
                       className={`group flex items-center justify-between space-x-2 px-3 py-1.5 min-w-[120px] max-w-[200px] rounded-t-lg border-t border-l border-r border-b cursor-pointer text-xs font-medium transition-all ${
                         isActive 
                           ? "bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 border-b-white dark:border-b-zinc-900 text-slate-800 dark:text-zinc-200" 
@@ -569,6 +654,7 @@ export default function App() {
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
+                    </React.Fragment>
                 );
               })}
             </div>
@@ -644,6 +730,12 @@ export default function App() {
         </div>
       </div>
 
+      <SettingsDialog
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        settings={appSettings}
+        onSettingsChange={setAppSettings}
+      />
     </div>
   );
 }
