@@ -21,6 +21,8 @@ import {
   Clock,
   ChevronRight,
   FileText,
+  Tag,
+  Frame,
 } from "lucide-react";
 
 interface EditorProps {
@@ -65,17 +67,13 @@ export default function Editor({
   // Parse markdown asynchronously when note content changes
   useEffect(() => {
     let active = true;
-    const render = async () => {
-      const html = await parseMarkdownToHtml(note.content || "");
+    parseMarkdownToHtml(note.content, notes).then(html => {
       if (active) {
         setHtmlContent(html);
       }
-    };
-    render();
-    return () => {
-      active = false;
-    };
-  }, [note.content]);
+    });
+    return () => { active = false; };
+  }, [note.content, notes]);
 
   // Insert markdown helper buttons
   const insertMarkdown = (before: string, after: string = "") => {
@@ -179,10 +177,25 @@ export default function Editor({
           <button
             onClick={() => insertMarkdown("[[", "]]")}
             className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded text-indigo-600 dark:text-indigo-400 transition-colors cursor-pointer flex items-center space-x-1 font-mono text-xs font-semibold"
-            title="Insert Wikilink to another note"
+            title="Insert Wikilink"
           >
             <Link2 className="w-4 h-4" />
-            <span>[[]]</span>
+            <span className="hidden sm:inline">[[]]</span>
+          </button>
+          <button
+            onClick={() => insertMarkdown("![[", "]]")}
+            className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded text-indigo-600 dark:text-indigo-400 transition-colors cursor-pointer flex items-center space-x-1 font-mono text-xs font-semibold"
+            title="Embed Note (Transclusion)"
+          >
+            <Frame className="w-4 h-4" />
+            <span className="hidden sm:inline">![[]]</span>
+          </button>
+          <button
+            onClick={() => insertMarkdown("#", "")}
+            className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded text-slate-600 dark:text-zinc-300 transition-colors cursor-pointer flex items-center space-x-1 font-mono text-xs font-semibold"
+            title="Insert Tag"
+          >
+            <Tag className="w-4 h-4" />
           </button>
         </div>
 

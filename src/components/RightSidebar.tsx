@@ -11,9 +11,10 @@ interface RightSidebarProps {
 
 export default function RightSidebar({ currentNote, notes, onClose, onSelectNote }: RightSidebarProps) {
   const [activeTab, setActiveTab] = useState<"links" | "tags">("links");
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
-  const { outgoingLinks, incomingLinks, tags } = useMemo(() => {
-    if (!currentNote) return { outgoingLinks: [], incomingLinks: [], tags: [] };
+  const { outgoingLinks, incomingLinks, unlinkedMentions, tags } = useMemo(() => {
+    if (!currentNote) return { outgoingLinks: [], incomingLinks: [], unlinkedMentions: [], tags: [] };
 
     // Extract outgoing links: text inside [[ ]]
     const linkRegex = /\[\[(.*?)\]\]/g;
@@ -32,6 +33,14 @@ export default function RightSidebar({ currentNote, notes, onClose, onSelectNote
       return nLinks.includes(currentTitleLower);
     });
 
+    // Extract unlinked mentions: other notes that contain currentNote.title as plain text,
+    // and are NOT already in inLinks.
+    const unlinkedMentions = notes.filter(n => {
+      if (n.id === currentNote.id) return false;
+      if (inLinks.some(linkNote => linkNote.id === n.id)) return false;
+      return n.content.toLowerCase().includes(currentTitleLower);
+    });
+
     // Extract tags from all notes: #word
     const tagRegex = /(?<=^|\s)#([\p{L}\p{N}_\-]+)/gu;
     const allTags = new Set<string>();
@@ -45,6 +54,7 @@ export default function RightSidebar({ currentNote, notes, onClose, onSelectNote
     return {
       outgoingLinks: Array.from(outLinks),
       incomingLinks: inLinks,
+      unlinkedMentions: unlinkedMentions,
       tags: Array.from(allTags)
     };
   }, [currentNote, notes]);
@@ -130,6 +140,27 @@ export default function RightSidebar({ currentNote, notes, onClose, onSelectNote
             </div>
             
             <div>
+              <div className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-2">Unlinked Mentions</div>
+              {unlinkedMentions.length === 0 ? (
+                <div className="text-xs text-slate-400 dark:text-zinc-600 italic mb-4">No unlinked mentions</div>
+              ) : (
+                <ul className="space-y-1 mb-4">
+                  {unlinkedMentions.map(n => (
+                    <li key={n.id}>
+                      <button 
+                        onClick={() => onSelectNote(n.id)}
+                        className="text-xs text-amber-600 dark:text-amber-500 hover:underline cursor-pointer truncate w-full text-left"
+                        title="Click to open note"
+                      >
+                        {n.title}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div>
               <div className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-2">Outgoing Links</div>
               {outgoingLinks.length === 0 ? (
                 <div className="text-xs text-slate-400 dark:text-zinc-600 italic">No outgoing links</div>
@@ -157,15 +188,40 @@ export default function RightSidebar({ currentNote, notes, onClose, onSelectNote
             {tags.length === 0 ? (
               <div className="text-xs text-slate-400 dark:text-zinc-600 italic">No tags found</div>
             ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {tags.map(tag => (
-                  <span 
-                    key={tag}
-                    className="px-2 py-0.5 bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 rounded-full text-xs"
-                  >
-                    #{tag}
-                  </span>
-                ))}
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {tags.map(tag => (
+                    <button 
+                      key={tag}
+                      onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+                      className={`px-2 py-0.5 rounded-full text-xs transition-colors cursor-pointer ${
+                        selectedTag === tag 
+                          ? "bg-indigo-600 text-white dark:bg-indigo-500" 
+                          : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-300 dark:hover:bg-zinc-700"
+                      }`}
+                    >
+                      #{tag}
+                    </button>
+                  ))}
+                </div>
+                
+                {selectedTag && (
+                  <div className="mt-4 border-t border-slate-200 dark:border-zinc-800 pt-4">
+                    <div className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-2">Notes with #{selectedTag}</div>
+                    <ul className="space-y-1">
+                      {notes.filter(n => n.content.includes(`#${selectedTag}`)).map(n => (
+                        <li key={n.id}>
+                          <button 
+                            onClick={() => onSelectNote(n.id)}
+                            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer truncate w-full text-left"
+                          >
+                            {n.title}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
           </div>

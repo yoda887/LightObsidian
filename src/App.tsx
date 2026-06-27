@@ -12,7 +12,7 @@ import Editor from "./components/Editor";
 import GraphView from "./components/GraphView";
 import RightSidebar from "./components/RightSidebar";
 import SettingsDialog, { AppSettings } from "./components/SettingsDialog";
-import { Map, FileText, Settings, Download, BookOpen, PanelRight, Edit3, Columns, Eye, X, Zap, Sun, Moon, Type } from "lucide-react";
+import { Map, FileText, Settings, Download, BookOpen, PanelRight, Edit3, Columns, Eye, X, Zap, Sun, Moon, Type, ArrowLeft, ArrowRight } from "lucide-react";
 
 // Default placeholder notes to guide the user
 const DEFAULT_NOTES: Note[] = [
@@ -185,6 +185,42 @@ export default function App() {
     }
   };
 
+  // Navigation History
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // Sync current note to history
+  useEffect(() => {
+    if (currentNoteId && history[historyIndex] !== currentNoteId) {
+      setHistory(prev => {
+        const newHistory = prev.slice(0, historyIndex + 1);
+        newHistory.push(currentNoteId);
+        return newHistory;
+      });
+      setHistoryIndex(prev => prev + 1);
+    }
+  }, [currentNoteId, history, historyIndex]);
+
+  const handleGoBack = () => {
+    if (historyIndex > 0) {
+      const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex);
+      const noteId = history[newIndex];
+      setCurrentNoteId(noteId);
+      setOpenNoteIds(prev => prev.includes(noteId) ? prev : [...prev, noteId]);
+    }
+  };
+
+  const handleGoForward = () => {
+    if (historyIndex < history.length - 1) {
+      const newIndex = historyIndex + 1;
+      setHistoryIndex(newIndex);
+      const noteId = history[newIndex];
+      setCurrentNoteId(noteId);
+      setOpenNoteIds(prev => prev.includes(noteId) ? prev : [...prev, noteId]);
+    }
+  };
+
   // Load notes and theme on initial load
   useEffect(() => {
     const initData = async () => {
@@ -287,8 +323,12 @@ export default function App() {
   };
 
   // Create a new note
-  const handleCreateNote = async (title?: string) => {
-    const finalTitle = title?.trim() || generateUniqueTitle();
+  const handleCreateNote = async (folder: string = "", initialTitle: string = "Untitled") => {
+    let finalTitle = initialTitle.trim();
+    
+    if (finalTitle === "Untitled" && notes.some(n => n.title.trim().toLowerCase() === "untitled")) {
+      finalTitle = generateUniqueTitle();
+    }
     
     // Check if a note with this title already exists
     const existing = notes.find(n => n.title.trim().toLowerCase() === finalTitle.toLowerCase());
@@ -300,12 +340,12 @@ export default function App() {
 
     const filename = `${finalTitle}.md`;
     const newNote: Note = {
-      id: vaultHandle ? filename : "note_" + Date.now(),
+      id: folder ? `${folder}/${filename}` : filename,
       title: finalTitle,
       content: `# ${finalTitle}\n\nStart typing here...`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      path: "" // default to root for now
+      path: folder
     };
 
     const updated = [...notes, newNote];
@@ -452,6 +492,22 @@ export default function App() {
     }
   };
 
+  const handleOpenDailyNote = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const existing = notes.find(n => n.title.trim() === today);
+    if (existing) {
+      handleSelectNote(existing.id);
+    } else {
+      handleCreateNote("", today);
+    }
+  };
+
+  const handleOpenRandomNote = () => {
+    if (notes.length === 0) return;
+    const random = notes[Math.floor(Math.random() * notes.length)];
+    handleSelectNote(random.id);
+  };
+
   // Handle clicking wikilinks inside formatted Preview
   const handleWikilinkClick = (noteTitle: string) => {
     const found = notes.find(n => n.title.trim().toLowerCase() === noteTitle.trim().toLowerCase());
@@ -461,7 +517,7 @@ export default function App() {
       // Suggest creation of note with that title
       const userConfirmed = confirm(`Note "${noteTitle}" does not exist. Would you like to create it?`);
       if (userConfirmed) {
-        handleCreateNote(noteTitle);
+        handleCreateNote("", noteTitle);
       }
     }
   };
@@ -612,6 +668,8 @@ export default function App() {
           onToggleTheme={handleToggleTheme}
           onOpenVault={openVault}
           vaultName={vaultHandle?.name}
+          onOpenDailyNote={handleOpenDailyNote}
+          onOpenRandomNote={handleOpenRandomNote}
         />
 
         {/* WORKSPACE AREA */}
@@ -619,8 +677,26 @@ export default function App() {
           
           {/* TABS BAR */}
           {openNoteIds.length > 0 && appMode !== "graph" && (
-            <div className="h-10 flex items-end bg-slate-50 dark:bg-zinc-900/50 border-b border-slate-200 dark:border-zinc-800 shrink-0">
-              <div className="flex overflow-x-auto select-none px-2 gap-1 scrollbar-hide -mb-[1px] w-full">
+            <div className="h-10 flex items-end bg-slate-50 dark:bg-zinc-900/50 border-b border-slate-200 dark:border-zinc-800 shrink-0 px-2">
+              <div className="flex items-center self-center mr-3 space-x-1 shrink-0">
+                <button
+                  onClick={handleGoBack}
+                  disabled={historyIndex <= 0}
+                  className="p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 hover:bg-slate-200 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Go Back"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={handleGoForward}
+                  disabled={historyIndex >= history.length - 1}
+                  className="p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 hover:bg-slate-200 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Go Forward"
+                >
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex overflow-x-auto select-none gap-1 scrollbar-hide -mb-[1px] w-full">
                 {openNoteIds.map((id, index) => {
                   const n = notes.find(n => n.id === id);
                   if (!n) return null;

@@ -51,7 +51,15 @@ const highlightMarkdown = (text: string) => {
     processed = processed.replace(/\*\*(.*?)\*\*/g, '<span class="md-bold"><span class="md-token">**</span>$1<span class="md-token">**</span></span>');
     processed = processed.replace(/\*(.*?)\*/g, '<span class="md-italic"><span class="md-token">*</span>$1<span class="md-token">*</span></span>');
     processed = processed.replace(/`(.*?)`/g, '<span class="md-code"><span class="md-token">`</span>$1<span class="md-token">`</span></span>');
-    processed = processed.replace(/\[\[(.*?)\]\]/g, '<span class="md-wikilink cursor-pointer hover:underline" data-note="$1"><span class="md-token">[[</span>$1<span class="md-token">]]</span></span>');
+    processed = processed.replace(/(!?)\[\[(.*?)\]\]/g, (match, excl, content) => {
+      const target = content.split('|')[0].trim();
+      const safeTarget = target.replace(/"/g, '&quot;');
+      if (excl === '!') {
+        return `<span class="md-embed text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1 rounded border border-indigo-200 dark:border-indigo-800"><span class="md-token">![[</span>${content}<span class="md-token">]]</span></span>`;
+      } else {
+        return `<span class="md-wikilink cursor-pointer hover:underline" data-note="${safeTarget}"><span class="md-token">[[</span>${content}<span class="md-token">]]</span></span>`;
+      }
+    });
     processed = processed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-extlink cursor-pointer text-blue-600 dark:text-blue-400 hover:underline"><span class="md-token">[</span>$1<span class="md-token">](</span><span class="md-token opacity-50 text-xs">$2</span><span class="md-token">)</span></a>');
 
     return `<span>${processed}</span>`;

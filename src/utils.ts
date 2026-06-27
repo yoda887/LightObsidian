@@ -21,8 +21,27 @@ export function extractWikilinks(content: string): string[] {
 
 /**
  * Safely parses Markdown and converts Wikilinks into interactive HTML anchors.
+ * Supports recursive transclusion of notes via ![[Note Title]].
  */
-export async function parseMarkdownToHtml(content: string): Promise<string> {
+export async function parseMarkdownToHtml(content: string, notes: Note[] = [], depth = 0): Promise<string> {
+  if (depth > 3) return `<div class="p-2 border border-red-500 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded text-xs my-2">Error: Transclusion depth limit reached.</div>`;
+
+  // Handle transclusions: ![[Note Title]]
+  const transclusions = Array.from(content.matchAll(/!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g));
+  for (const match of transclusions) {
+    const cleanTarget = match[1].trim();
+    const targetNote = notes.find(n => n.title.trim().toLowerCase() === cleanTarget.toLowerCase());
+    
+    let embedHtml = "";
+    if (targetNote) {
+      const parsedChild = await parseMarkdownToHtml(targetNote.content, notes, depth + 1);
+      embedHtml = `<div class="transclusion border-l-4 border-indigo-500 pl-4 py-2 my-4 bg-slate-50 dark:bg-zinc-900 rounded-r shadow-sm"><div class="text-[10px] font-bold text-indigo-500 mb-2 uppercase tracking-widest">${cleanTarget}</div><div class="embed-content">${parsedChild}</div></div>`;
+    } else {
+      embedHtml = `<div class="transclusion border-l-4 border-slate-300 dark:border-zinc-700 pl-4 py-2 my-4 text-slate-500 dark:text-zinc-500 text-sm italic bg-slate-50 dark:bg-zinc-900 rounded-r">Note "${cleanTarget}" not found.</div>`;
+    }
+    content = content.replace(match[0], embedHtml);
+  }
+
   // Parse standard Markdown
   let parsed = await marked.parse(content, { breaks: true, gfm: true });
   

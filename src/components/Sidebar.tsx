@@ -5,7 +5,7 @@
 
 import { useState } from "react";
 import { Note } from "../types";
-import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus } from "lucide-react";
+import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices } from "lucide-react";
 
 interface SidebarProps {
   notes: Note[];
@@ -19,6 +19,8 @@ interface SidebarProps {
   onToggleTheme: () => void;
   onOpenVault?: () => void;
   vaultName?: string;
+  onOpenDailyNote: () => void;
+  onOpenRandomNote: () => void;
 }
 
 interface TreeNode {
@@ -198,6 +200,8 @@ export default function Sidebar({
   onToggleTheme,
   onOpenVault,
   vaultName,
+  onOpenDailyNote,
+  onOpenRandomNote
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -233,7 +237,20 @@ export default function Sidebar({
             >
               <FileEdit className="w-4 h-4" />
             </button>
-            
+            <button
+              onClick={onOpenDailyNote}
+              className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded transition-colors cursor-pointer"
+              title="Daily Note"
+            >
+              <Calendar className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onOpenRandomNote}
+              className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded transition-colors cursor-pointer"
+              title="Random Note"
+            >
+              <Dices className="w-4 h-4" />
+            </button>
             <button
               onClick={() => alert("Creating folders will be implemented later!")}
               className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded transition-colors cursor-pointer"
