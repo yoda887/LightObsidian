@@ -7,6 +7,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { Note } from "../types";
 import { parseMarkdownToHtml } from "../utils";
 import { CustomWYSIWYG, CustomWYSIWYGRef } from "./CustomWYSIWYG";
+import TemplateModal from "./TemplateModal";
 import {
   Heading1,
   Bold,
@@ -46,6 +47,10 @@ export default function Editor({
   const [localTitle, setLocalTitle] = useState(note.title);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const wysiwygRef = useRef<CustomWYSIWYGRef | null>(null);
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+
+  // Derive templates from notes
+  const templates = notes.filter(n => n.path === "Templates" || n.id.startsWith("Templates/"));
 
   // Sync local title when note changes
   useEffect(() => {
@@ -197,6 +202,16 @@ export default function Editor({
           >
             <Tag className="w-4 h-4" />
           </button>
+          
+          <div className="h-4 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />
+          <button
+            onClick={() => setIsTemplateModalOpen(true)}
+            className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded text-indigo-600 dark:text-indigo-400 transition-colors cursor-pointer flex items-center space-x-1 font-mono text-xs font-semibold"
+            title="Insert Template"
+          >
+            <FileText className="w-4 h-4" />
+            <span className="hidden sm:inline">Template</span>
+          </button>
         </div>
 
 
@@ -287,6 +302,13 @@ export default function Editor({
         )}
 
       </div>
+
+      <TemplateModal 
+        isOpen={isTemplateModalOpen}
+        onClose={() => setIsTemplateModalOpen(false)}
+        templates={templates}
+        onSelectTemplate={(content) => insertMarkdown(content)}
+      />
     </div>
   );
 }

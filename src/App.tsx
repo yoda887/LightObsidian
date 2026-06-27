@@ -12,88 +12,63 @@ import Editor from "./components/Editor";
 import GraphView from "./components/GraphView";
 import RightSidebar from "./components/RightSidebar";
 import SettingsDialog, { AppSettings } from "./components/SettingsDialog";
-import { Map, FileText, Settings, Download, BookOpen, PanelRight, Edit3, Columns, Eye, X, Zap, Sun, Moon, Type, ArrowLeft, ArrowRight } from "lucide-react";
+import ReviewModal from "./components/ReviewModal";
+import { extractFlashcards, getDueCards, updateFlashcardInContent, Flashcard } from "./flashcards";
+import { Map, FileText, Settings, Download, BookOpen, PanelRight, Edit3, Columns, Eye, X, Zap, Sun, Moon, Type, ArrowLeft, ArrowRight, Brain } from "lucide-react";
 
 // Default placeholder notes to guide the user
 const DEFAULT_NOTES: Note[] = [
   {
     id: "welcome",
     title: "Welcome Note",
-    content: `# Welcome to Lite Obsidian!
-
-This is a beautiful, highly responsive, and lightweight analog of **Obsidian** built to organize your thoughts, knowledge, and notes.
-
-## 🚀 Key Features
-1. **Markdown Editing**: Full support for styled headers, code blocks, lists, and quotes.
-2. **Wikilinks \`[[Link]]\`**: Link notes instantly. Type \`[[Obsidian HTA Concept]]\` to see a connection in action!
-3. **Graph View (Map)**: A force-directed visual canvas representation of all notes and connections.
-4. **Standalone Exporter**: Build and export the entire workspace with your current notes as a **single, fully-functional HTML / HTA file**.
-
-## 🔗 Try out Wikilinks
-Click this link to explore how HTA apps run: [[Obsidian HTA Concept]] or start brainstorming with [[Mindmap & Brainstorming]].
-If you click a link pointing to a note that doesn't exist yet (like [[My Personal Log]]), the engine will automatically offer to create it for you!
-
-## 🗺️ Interactive Graph
-Click on the **Graph Map** tab in the main workspace header to see these notes animate, attract each other, and hover/click to explore!`,
+    content: `# Welcome to Lite Obsidian!\n\nThis is a beautiful, highly responsive, and lightweight analog of **Obsidian** built to organize your thoughts, knowledge, and notes.\n\n## 🚀 Key Features\n1. **Markdown Editing**: Full support for styled headers, code blocks, lists, and quotes.\n2. **Wikilinks \`[[Link]]\`**: Link notes instantly. Type \`[[Obsidian HTA Concept]]\` to see a connection in action!\n3. **Graph View (Map)**: A force-directed visual canvas representation of all notes and connections.\n4. **Standalone Exporter**: Build and export the entire workspace with your current notes as a **single, fully-functional HTML / HTA file**.\n\n## 🔗 Try out Wikilinks\nClick this link to explore how HTA apps run: [[Obsidian HTA Concept]] or start brainstorming with [[Mindmap & Brainstorming]].\nIf you click a link pointing to a note that doesn't exist yet (like [[My Personal Log]]), the engine will automatically offer to create it for you!\n\n## 🗺️ Interactive Graph\nClick on the **Graph Map** tab in the main workspace header to see these notes animate, attract each other, and hover/click to explore!`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   },
   {
     id: "hta-concept",
     title: "Obsidian HTA Concept",
-    content: `# Obsidian HTML & HTA Concept
-
-The user requested a single self-contained HTML file that can be converted into a Windows **.hta** (HTML Application).
-
-## 💡 What is an HTA file?
-An **HTA** is a Windows file extension for HTML pages that run with system-level access outside the browser sandbox. 
-- You can simply rename the exported file from \`obsidian_vault.html\` to \`obsidian_vault.hta\`.
-- Double-clicking it on Windows opens it in a standalone window, looking and acting like a native desktop application!
-
-## 💾 Saving Notes Inside HTML/HTA
-When you edit notes inside the exported file:
-- It automatically persists changes inside your browser's \`localStorage\` so your work is safe across opens!
-- It contains its own **Export HTA/HTML** button inside. This means you can download a *new* updated standalone file containing your latest changes baked right into the source code!
-
-*Return to the [[Welcome Note]] or see [[Mindmap & Brainstorming]].*`,
+    content: `# Obsidian HTML & HTA Concept\n\nThe user requested a single self-contained HTML file that can be converted into a Windows **.hta** (HTML Application).\n\n## 💡 What is an HTA file?\nAn **HTA** is a Windows file extension for HTML pages that run with system-level access outside the browser sandbox. \n- You can simply rename the exported file from \`obsidian_vault.html\` to \`obsidian_vault.hta\`.\n- Double-clicking it on Windows opens it in a standalone window, looking and acting like a native desktop application!\n\n## 💾 Saving Notes Inside HTML/HTA\nWhen you edit notes inside the exported file:\n- It automatically persists changes inside your browser's \`localStorage\` so your work is safe across opens!\n- It contains its own **Export HTA/HTML** button inside. This means you can download a *new* updated standalone file containing your latest changes baked right into the source code!\n\n*Return to the [[Welcome Note]] or see [[Mindmap & Brainstorming]].*`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   },
   {
     id: "brainstorm",
     title: "Mindmap & Brainstorming",
-    content: `# Mindmap & Brainstorming
-
-Use Lite Obsidian to brainstorm interconnected projects. By linking concepts together, you build a "second brain" visual network.
-
-## 📝 Connected Projects
-- **[[My Projects]]**: Tracking active development cycles.
-- **[[Daily Habits]]**: Mindful productivity checklist.
-
-As you create links, check the **Graph Map** panel to watch the nodes form a neural-like database map of your knowledge.
-
----
-*Created during your session. Link back to [[Welcome Note]].*`,
+    content: `# Mindmap & Brainstorming\n\nUse Lite Obsidian to brainstorm interconnected projects. By linking concepts together, you build a "second brain" visual network.\n\n## 📝 Connected Projects\n- **[[My Projects]]**: Tracking active development cycles.\n- **[[Daily Habits]]**: Mindful productivity checklist.\n\nAs you create links, check the **Graph Map** panel to watch the nodes form a neural-like database map of your knowledge.\n\n---\n*Created during your session. Link back to [[Welcome Note]].*`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   },
   {
     id: "my-projects",
     title: "My Projects",
-    content: `# My Projects
-
-Here you can organize active tasks and goals.
-
-## 🛠️ Lite Obsidian Sandbox
-- [x] Integrate force-directed physics canvas for note relations.
-- [x] Configure self-contained single-file HTML exporter template.
-- [ ] Write my first note from scratch!
-
-*Related notes:*
-- Check [[Welcome Note]]
-- Or read about [[Obsidian HTA Concept]]`,
+    content: `# My Projects\n\nHere you can organize active tasks and goals.\n\n## 🛠️ Lite Obsidian Sandbox\n- [x] Integrate force-directed physics canvas for note relations.\n- [x] Configure self-contained single-file HTML exporter template.\n- [ ] Write my first note from scratch!\n\n*Related notes:*\n- Check [[Welcome Note]]\n- Or read about [[Obsidian HTA Concept]]`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
+  },
+  {
+    id: "Templates/Meeting Protocol.md",
+    title: "Meeting Protocol",
+    content: `# Meeting Protocol\n\n**Date**: [[YYYY-MM-DD]]\n**Client**: \n**Attorney**: \n\n## Summary of Discussion\n- \n\n## Action Items\n- [ ] \n- [ ] \n\n## Next Meeting\n- \n`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    path: "Templates"
+  },
+  {
+    id: "Templates/IRAC Analysis.md",
+    title: "IRAC Analysis",
+    content: `# IRAC Analysis: [Case Name]\n\n## 🔍 Issue\nWhat is the legal question that, when answered, determines the result of the case?\n\n## 📜 Rule\nWhat is the rule of law that applies to the issue?\n\n## ⚖️ Application / Analysis\nHow does the rule of law apply to the specific facts of this case?\n\n## 🎯 Conclusion\nWhat is the outcome?\n`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    path: "Templates"
+  },
+  {
+    id: "Templates/Lawsuit Template.md",
+    title: "Lawsuit Template",
+    content: `# Lawsuit Draft\n\n**Court**: \n**Plaintiff**: \n**Defendant**: \n**Case No**: \n\n## I. Statement of Facts\n\n\n## II. Legal Grounds\n\n\n## III. Claims / Prayer for Relief\n1. \n2. \n\n**Date**: [[YYYY-MM-DD]]\n**Signature**: ______________\n`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    path: "Templates"
   }
 ];
 
@@ -108,6 +83,7 @@ export default function App() {
   const [vaultHandle, setVaultHandle] = useState<any>(null);
   const [folders, setFolders] = useState<string[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isReviewOpen, setIsReviewOpen] = useState<boolean>(false);
   const [appSettings, setAppSettings] = useState<AppSettings>({ font: "inter" });
 
   useEffect(() => {
@@ -534,6 +510,16 @@ export default function App() {
     document.body.removeChild(link);
   };
 
+  const handleReviewCard = async (card: Flashcard, grade: "hard" | "good" | "easy") => {
+    const note = notes.find(n => n.id === card.noteId);
+    if (!note) return;
+
+    const newContent = updateFlashcardInContent(note.content, card, grade);
+    handleUpdateNote(note.id, { content: newContent });
+  };
+
+  const dueCards = getDueCards(notes);
+
   const currentNote = notes.find(n => n.id === currentNoteId);
   const wordCount = currentNote ? (currentNote.content || "").trim().split(/\s+/).filter(Boolean).length : 0;
   const charCount = currentNote ? (currentNote.content || "").length : 0;
@@ -570,6 +556,17 @@ export default function App() {
             title="Settings"
           >
             <Settings className="w-4 h-4" />
+          </button>
+          
+          <button
+            onClick={() => setIsReviewOpen(true)}
+            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded transition-colors cursor-pointer relative"
+            title="Review Flashcards"
+          >
+            <Brain className="w-4 h-4" />
+            {dueCards.length > 0 && (
+              <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
+            )}
           </button>
         </div>
         
@@ -811,6 +808,13 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         settings={appSettings}
         onSettingsChange={setAppSettings}
+      />
+
+      <ReviewModal
+        isOpen={isReviewOpen}
+        onClose={() => setIsReviewOpen(false)}
+        dueCards={dueCards}
+        onReviewCard={handleReviewCard}
       />
     </div>
   );
