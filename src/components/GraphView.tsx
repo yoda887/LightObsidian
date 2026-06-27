@@ -65,12 +65,13 @@ export default function GraphView({ notes, currentNoteId, onSelectNote }: GraphV
     const newLinks: GraphLink[] = [];
     notes.forEach(note => {
       const outgoing = extractWikilinks(note.content);
-      outgoing.forEach(targetTitle => {
-        const targetNote = notes.find(n => n.title.trim().toLowerCase() === targetTitle.toLowerCase());
+      outgoing.forEach(link => {
+        const targetNote = notes.find(n => n.title.trim().toLowerCase() === link.target.toLowerCase());
         if (targetNote && targetNote.id !== note.id) {
           newLinks.push({
             source: note.id,
             target: targetNote.id,
+            type: link.type
           });
         }
       });
@@ -178,18 +179,43 @@ export default function GraphView({ notes, currentNoteId, onSelectNote }: GraphV
       ctx.translate(panRef.current.x, panRef.current.y);
 
       // Draw links
-      ctx.strokeStyle = "rgba(99, 102, 241, 0.25)";
-      ctx.lineWidth = 1.8;
       links.forEach(link => {
         const sNode = nodes.find(n => n.id === link.source);
         const tNode = nodes.find(n => n.id === link.target);
         if (sNode && tNode) {
           ctx.beginPath();
+          if (link.type) {
+            ctx.strokeStyle = "rgba(225, 29, 72, 0.6)"; // rose-600
+            ctx.setLineDash([4, 4]);
+            ctx.lineWidth = 2;
+          } else {
+            ctx.strokeStyle = "rgba(99, 102, 241, 0.25)"; // indigo-500
+            ctx.setLineDash([]);
+            ctx.lineWidth = 1.8;
+          }
           ctx.moveTo(sNode.x, sNode.y);
           ctx.lineTo(tNode.x, tNode.y);
           ctx.stroke();
+
+          // Draw type label if present
+          if (link.type) {
+            const midX = (sNode.x + tNode.x) / 2;
+            const midY = (sNode.y + tNode.y) / 2;
+            ctx.font = "bold 9px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            
+            // Draw background for text
+            const textWidth = ctx.measureText(link.type).width;
+            ctx.fillStyle = "rgba(255, 241, 242, 0.9)"; // rose-50
+            ctx.fillRect(midX - textWidth / 2 - 2, midY - 6, textWidth + 4, 12);
+            
+            ctx.fillStyle = "rgba(225, 29, 72, 1)"; // rose-600
+            ctx.fillText(link.type.toUpperCase(), midX, midY);
+          }
         }
       });
+      ctx.setLineDash([]); // reset dash
 
       // Update positions and Draw Nodes
       nodes.forEach(node => {

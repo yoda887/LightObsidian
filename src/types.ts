@@ -25,4 +25,5 @@ export interface GraphNode {
 export interface GraphLink {
   source: string; // note id
   target: string; // note id
+  type?: string;  // relationship type, e.g. "overrules"
 }

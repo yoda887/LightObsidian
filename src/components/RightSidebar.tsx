@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { Note } from "../types";
-import { Link, Hash, X } from "lucide-react";
+import { Link, Hash, X, Sparkles } from "lucide-react";
 
 interface RightSidebarProps {
   currentNote?: Note;
@@ -10,11 +10,11 @@ interface RightSidebarProps {
 }
 
 export default function RightSidebar({ currentNote, notes, onClose, onSelectNote }: RightSidebarProps) {
-  const [activeTab, setActiveTab] = useState<"links" | "tags">("links");
+  const [activeTab, setActiveTab] = useState<"links" | "tags" | "context">("links");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
-  const { outgoingLinks, incomingLinks, unlinkedMentions, tags } = useMemo(() => {
-    if (!currentNote) return { outgoingLinks: [], incomingLinks: [], unlinkedMentions: [], tags: [] };
+  const { outgoingLinks, incomingLinks, unlinkedMentions, suggestedLinks, secondLevelLinks, tags } = useMemo(() => {
+    if (!currentNote) return { outgoingLinks: [], incomingLinks: [], unlinkedMentions: [], suggestedLinks: [], secondLevelLinks: [], tags: [] };
 
     // Extract outgoing links: text inside [[ ]]
     const linkRegex = /\[\[(.*?)\]\]/g;
@@ -51,10 +51,34 @@ export default function RightSidebar({ currentNote, notes, onClose, onSelectNote
       }
     });
 
+    // Extract suggested links (current note mentions other note titles)
+    const suggestedLinks = notes.filter(n => {
+      if (n.id === currentNote.id) return false;
+      const nTitleLower = n.title.toLowerCase();
+      const hasOutLink = Array.from(outLinks).some(link => link.toLowerCase() === nTitleLower);
+      if (hasOutLink) return false;
+      return currentNote.content.toLowerCase().includes(nTitleLower);
+    });
+
+    // Extract second-level connections (notes that share an outgoing link)
+    const secondLevelLinks = notes.filter(n => {
+      if (n.id === currentNote.id) return false;
+      if (inLinks.some(i => i.id === n.id)) return false;
+      const hasOutLink = Array.from(outLinks).some(link => link.toLowerCase() === n.title.toLowerCase());
+      if (hasOutLink) return false;
+
+      const nOutLinks = Array.from(n.content.matchAll(/\[\[(.*?)\]\]/g)).map(m => m[1].trim().toLowerCase());
+      return nOutLinks.some(link => {
+        return Array.from(outLinks).some(o => o.toLowerCase() === link);
+      });
+    });
+
     return {
       outgoingLinks: Array.from(outLinks),
       incomingLinks: inLinks,
       unlinkedMentions: unlinkedMentions,
+      suggestedLinks,
+      secondLevelLinks,
       tags: Array.from(allTags)
     };
   }, [currentNote, notes]);
@@ -97,6 +121,18 @@ export default function RightSidebar({ currentNote, notes, onClose, onSelectNote
         >
           <Link className="w-3.5 h-3.5" />
           <span>Links</span>
+        </button>
+        <button
+          onClick={() => setActiveTab("context")}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[11px] uppercase tracking-wider font-semibold transition-colors cursor-pointer ${
+            activeTab === "context" 
+              ? "text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" 
+              : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent"
+          }`}
+          title="Context & Suggestions"
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>Context</span>
         </button>
         <button
           onClick={() => setActiveTab("tags")}
@@ -180,6 +216,50 @@ export default function RightSidebar({ currentNote, notes, onClose, onSelectNote
               )}
             </div>
           </>
+        )}
+
+        {currentNote && activeTab === "context" && (
+          <div className="space-y-6">
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-2">Suggested Links</div>
+              {suggestedLinks.length === 0 ? (
+                <div className="text-xs text-slate-400 dark:text-zinc-600 italic">No suggestions</div>
+              ) : (
+                <ul className="space-y-1">
+                  {suggestedLinks.map(n => (
+                    <li key={n.id}>
+                      <button 
+                        onClick={() => handleLinkClick(n.title)}
+                        className="text-xs text-rose-600 dark:text-rose-400 hover:underline cursor-pointer truncate w-full text-left"
+                      >
+                        {n.title}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-2">2nd-Level Connections</div>
+              {secondLevelLinks.length === 0 ? (
+                <div className="text-xs text-slate-400 dark:text-zinc-600 italic">No common links found</div>
+              ) : (
+                <ul className="space-y-1">
+                  {secondLevelLinks.map(n => (
+                    <li key={n.id}>
+                      <button 
+                        onClick={() => handleLinkClick(n.title)}
+                        className="text-xs text-slate-600 dark:text-zinc-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline cursor-pointer truncate w-full text-left"
+                      >
+                        {n.title}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
         )}
 
         {currentNote && activeTab === "tags" && (

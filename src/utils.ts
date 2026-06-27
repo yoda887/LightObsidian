@@ -6,17 +6,31 @@
 import { Note } from "./types";
 import { marked } from "marked";
 
+export interface ExtractedLink {
+  target: string;
+  type?: string;
+}
+
 /**
- * Extracts wikilinks [[Note Title]] or [[Note Title|Custom Label]] from note content.
+ * Extracts wikilinks [[Note Title]] or [[type::Note Title]] from note content.
  */
-export function extractWikilinks(content: string): string[] {
-  const regex = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
-  const links: string[] = [];
+export function extractWikilinks(content: string): ExtractedLink[] {
+  const regex = /\[\[(?:([^\]|:]+)::)?([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+  const links: ExtractedLink[] = [];
   let match;
   while ((match = regex.exec(content)) !== null) {
-    links.push(match[1].trim());
+    links.push({
+      type: match[1] ? match[1].trim() : undefined,
+      target: match[2].trim(),
+    });
   }
-  return Array.from(new Set(links)); // Unique links
+  
+  // Deduplicate by target + type
+  const unique = new Map<string, ExtractedLink>();
+  for (const link of links) {
+    unique.set(`${link.type || ''}::${link.target}`, link);
+  }
+  return Array.from(unique.values());
 }
 
 /**
@@ -45,19 +59,27 @@ export async function parseMarkdownToHtml(content: string, notes: Note[] = [], d
   // Parse standard Markdown
   let parsed = await marked.parse(content, { breaks: true, gfm: true });
   
-  // Replace tags: #word
-  // Using prefix matching (^|\s|>) to safely target text nodes and avoid hex colors
+  // Replace tags: #word with special statuses
   const tagRegex = /(^|\s|>)(#[\p{L}\p{N}_\-]+)/gu;
   parsed = parsed.replace(tagRegex, (_, prefix, tag) => {
+    const t = tag.toLowerCase();
+    if (t === '#seed') {
+      return `${prefix}<span class="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 rounded-md text-xs font-bold mx-0.5 inline-flex items-center gap-1 shadow-sm border border-emerald-200 dark:border-emerald-800/50">🌱 Seed</span>`;
+    } else if (t === '#incubator') {
+      return `${prefix}<span class="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 rounded-md text-xs font-bold mx-0.5 inline-flex items-center gap-1 shadow-sm border border-amber-200 dark:border-amber-800/50">🐣 Incubator</span>`;
+    } else if (t === '#evergreen') {
+      return `${prefix}<span class="px-2 py-0.5 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 rounded-md text-xs font-bold mx-0.5 inline-flex items-center gap-1 shadow-sm border border-green-200 dark:border-green-800/50">🌲 Evergreen</span>`;
+    }
     return `${prefix}<span class="px-1.5 py-0.5 bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 rounded-md text-xs font-medium mx-0.5 inline-block">${tag}</span>`;
   });
 
-  // Replace [[Note Title]] or [[Note Title|Custom Label]] with customized clickable links
-  const wikilinkRegex = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
-  return parsed.replace(wikilinkRegex, (_, target, label) => {
+  // Replace [[type::Note Title]] or [[Note Title|Custom Label]]
+  const wikilinkRegex = /\[\[(?:([^\]|:]+)::)?([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+  return parsed.replace(wikilinkRegex, (_, typeMatch, target, label) => {
     const cleanTarget = target.trim();
     const displayLabel = label ? label.trim() : cleanTarget;
-    return `<span data-note="${encodeURIComponent(cleanTarget)}" class="wikilink cursor-pointer text-violet-600 dark:text-violet-400 hover:text-violet-500 dark:hover:text-violet-300 hover:underline font-semibold border-b border-dashed border-violet-400 transition-colors">${displayLabel}</span>`;
+    const typeBadge = typeMatch ? `<span class="text-[9px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 px-1 py-0.5 rounded mr-1 border border-rose-200 dark:border-rose-800/50 align-middle">${typeMatch.trim()}</span>` : "";
+    return `${typeBadge}<span data-note="${encodeURIComponent(cleanTarget)}" class="wikilink cursor-pointer text-violet-600 dark:text-violet-400 hover:text-violet-500 dark:hover:text-violet-300 hover:underline font-semibold border-b border-dashed border-violet-400 transition-colors">${displayLabel}</span>`;
   });
 }
 

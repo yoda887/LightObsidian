@@ -14,7 +14,8 @@ import RightSidebar from "./components/RightSidebar";
 import SettingsDialog, { AppSettings } from "./components/SettingsDialog";
 import ReviewModal from "./components/ReviewModal";
 import { extractFlashcards, getDueCards, updateFlashcardInContent, Flashcard } from "./flashcards";
-import { Map, FileText, Settings, Download, BookOpen, PanelRight, Edit3, Columns, Eye, X, Zap, Sun, Moon, Type, ArrowLeft, ArrowRight, Brain } from "lucide-react";
+import TimelineView from "./components/TimelineView";
+import { Map, FileText, Settings, Download, BookOpen, PanelRight, Edit3, Columns, Eye, X, Zap, Sun, Moon, Type, ArrowLeft, ArrowRight, Brain, Clock } from "lucide-react";
 
 // Default placeholder notes to guide the user
 const DEFAULT_NOTES: Note[] = [
@@ -78,7 +79,7 @@ export default function App() {
   const [openNoteIds, setOpenNoteIds] = useState<string[]>([]);
   const [darkMode, setDarkMode] = useState<boolean>(false);
   const [typewriterMode, setTypewriterMode] = useState<boolean>(false);
-  const [appMode, setAppMode] = useState<"edit" | "preview" | "split" | "graph" | "dynamic">("split");
+  const [appMode, setAppMode] = useState<"edit" | "preview" | "split" | "graph" | "dynamic" | "timeline">("split");
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState<boolean>(false);
   const [vaultHandle, setVaultHandle] = useState<any>(null);
   const [folders, setFolders] = useState<string[]>([]);
@@ -626,10 +627,22 @@ export default function App() {
                   ? "bg-white dark:bg-zinc-900 text-slate-900 dark:text-white shadow-sm"
                   : "text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white"
               }`}
-              title="Interactive Graph View"
+              title="Interactive graph map"
             >
               <Map className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Graph</span>
+              <span className="hidden md:inline">Graph Map</span>
+            </button>
+            <button
+              onClick={() => setAppMode("timeline")}
+              className={`flex items-center space-x-1.5 px-3 py-1 rounded text-xs font-semibold transition-all cursor-pointer ${
+                appMode === "timeline"
+                  ? "bg-white dark:bg-zinc-900 text-slate-900 dark:text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white"
+              }`}
+              title="Timeline History"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Timeline</span>
             </button>
           </div>
         <div className="flex-1 flex items-center justify-end gap-4">
@@ -673,7 +686,7 @@ export default function App() {
         <div className="flex-1 flex flex-col overflow-hidden h-full bg-white dark:bg-zinc-900">
           
           {/* TABS BAR */}
-          {openNoteIds.length > 0 && appMode !== "graph" && (
+          {openNoteIds.length > 0 && appMode !== "graph" && appMode !== "timeline" && (
             <div className="h-10 flex items-end bg-slate-50 dark:bg-zinc-900/50 border-b border-slate-200 dark:border-zinc-800 shrink-0 px-2">
               <div className="flex items-center self-center mr-3 space-x-1 shrink-0">
                 <button
@@ -736,41 +749,44 @@ export default function App() {
 
           {/* WORKSPACE TAB RENDERING */}
           <div className="flex-1 overflow-hidden relative">
-            {appMode !== "graph" ? (
-              currentNote ? (
-                <Editor
-                  note={currentNote}
-                  notes={notes}
-                  mode={appMode}
-                  onUpdateNote={handleUpdateNote}
-                  onSelectNote={handleSelectNote}
-                  onWikilinkClick={handleWikilinkClick}
-                />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center space-y-4 p-8 text-center bg-slate-50 dark:bg-zinc-950">
-                  <div className="p-4 bg-indigo-50 dark:bg-indigo-950/20 rounded text-indigo-600 dark:text-indigo-400 shadow-sm animate-pulse">
-                    <FileText className="w-10 h-10" />
-                  </div>
-                  <div className="max-w-md">
-                    <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wider">No active note selected</h3>
-                    <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">
-                      Select an existing note from the sidebar or click the "New Note" button to start mapping your second brain.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => handleCreateNote()}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs px-4 py-2 rounded shadow-sm transition-all cursor-pointer"
-                  >
-                    Create a Note
-                  </button>
-                </div>
-              )
-            ) : (
+            {appMode === "graph" ? (
               <GraphView
                 notes={notes}
                 currentNoteId={currentNoteId}
                 onSelectNote={handleSelectNote}
               />
+            ) : appMode === "timeline" ? (
+              <TimelineView
+                notes={notes}
+                onSelectNote={handleSelectNote}
+              />
+            ) : currentNote ? (
+              <Editor
+                note={currentNote}
+                notes={notes}
+                mode={appMode}
+                onUpdateNote={handleUpdateNote}
+                onSelectNote={handleSelectNote}
+                onWikilinkClick={handleWikilinkClick}
+              />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center space-y-4 p-8 text-center bg-slate-50 dark:bg-zinc-950">
+                <div className="p-4 bg-indigo-50 dark:bg-indigo-950/20 rounded text-indigo-600 dark:text-indigo-400 shadow-sm animate-pulse">
+                  <FileText className="w-10 h-10" />
+                </div>
+                <div className="max-w-md">
+                  <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wider">No active note selected</h3>
+                  <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">
+                    Select an existing note from the sidebar or click the "New Note" button to start mapping your second brain.
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleCreateNote()}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs px-4 py-2 rounded shadow-sm transition-all cursor-pointer"
+                >
+                  Create a Note
+                </button>
+              </div>
             )}
           </div>
 
