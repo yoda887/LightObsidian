@@ -15,7 +15,8 @@ import SettingsDialog, { AppSettings } from "./components/SettingsDialog";
 import ReviewModal from "./components/ReviewModal";
 import { extractFlashcards, getDueCards, updateFlashcardInContent, Flashcard } from "./flashcards";
 import TimelineView from "./components/TimelineView";
-import { Map, FileText, Settings, Download, BookOpen, PanelRight, Edit3, Columns, Eye, X, Zap, Sun, Moon, Type, ArrowLeft, ArrowRight, Brain, Clock } from "lucide-react";
+import HelpDialog from "./components/HelpDialog";
+import { Map, FileText, Settings, Download, BookOpen, PanelRight, Edit3, Columns, Eye, X, Zap, Sun, Moon, Type, ArrowLeft, ArrowRight, Brain, Clock, HelpCircle } from "lucide-react";
 
 // Default placeholder notes to guide the user
 const DEFAULT_NOTES: Note[] = [
@@ -84,6 +85,7 @@ export default function App() {
   const [vaultHandle, setVaultHandle] = useState<any>(null);
   const [folders, setFolders] = useState<string[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [isReviewOpen, setIsReviewOpen] = useState<boolean>(false);
   const [appSettings, setAppSettings] = useState<AppSettings>({ font: "inter" });
 
@@ -560,6 +562,14 @@ export default function App() {
           </button>
           
           <button
+            onClick={() => setIsHelpOpen(true)}
+            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded transition-colors cursor-pointer"
+            title="Help & Documentation"
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
+          
+          <button
             onClick={() => setIsReviewOpen(true)}
             className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded transition-colors cursor-pointer relative"
             title="Review Flashcards"
@@ -831,6 +841,11 @@ export default function App() {
         onClose={() => setIsReviewOpen(false)}
         dueCards={dueCards}
         onReviewCard={handleReviewCard}
+      />
+
+      <HelpDialog
+        isOpen={isHelpOpen}
+        onClose={() => setIsHelpOpen(false)}
       />
     </div>
   );
