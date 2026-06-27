@@ -6,6 +6,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { Note } from "../types";
 import { parseMarkdownToHtml } from "../utils";
+import { CustomWYSIWYG } from "./CustomWYSIWYG";
 import {
   Heading1,
   Bold,
@@ -39,20 +40,7 @@ export default function Editor({
   onWikilinkClick,
 }: EditorProps) {
   const [htmlContent, setHtmlContent] = useState("");
-  const [isDynamicEditing, setIsDynamicEditing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-
-  // Auto-focus textarea when entering dynamic edit mode
-  useEffect(() => {
-    if (mode === "dynamic" && isDynamicEditing && textareaRef.current) {
-      textareaRef.current.focus();
-    }
-  }, [isDynamicEditing, mode]);
-
-  // Reset dynamic state when note changes
-  useEffect(() => {
-    setIsDynamicEditing(false);
-  }, [note.id]);
 
   // Parse markdown asynchronously when note content changes
   useEffect(() => {
@@ -106,19 +94,6 @@ export default function Editor({
         onWikilinkClick(noteTitle);
       }
       return;
-    }
-
-    // Handle dynamic mode click to edit
-    if (mode === "dynamic") {
-      setIsDynamicEditing(true);
-    }
-  };
-
-  const handleEditBlur = (e: React.FocusEvent<HTMLDivElement>) => {
-    if (mode === "dynamic") {
-      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-        setIsDynamicEditing(false);
-      }
     }
   };
 
@@ -183,11 +158,8 @@ export default function Editor({
       <div className="flex-1 flex overflow-hidden">
         
         {/* EDIT PANE */}
-        {(mode === "edit" || mode === "split" || (mode === "dynamic" && isDynamicEditing)) && (
-          <div 
-            className="flex-1 flex flex-col p-4 sm:p-6 overflow-hidden border-r border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"
-            onBlur={handleEditBlur}
-          >
+        {(mode === "edit" || mode === "split") && (
+          <div className="flex-1 flex flex-col p-4 sm:p-6 overflow-hidden border-r border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
             {/* Note Title Input */}
             <input
               type="text"
@@ -209,27 +181,52 @@ export default function Editor({
         )}
 
         {/* PREVIEW PANE */}
-        {(mode === "preview" || mode === "split" || (mode === "dynamic" && !isDynamicEditing)) && (
+        {(mode === "preview" || mode === "split") && (
           <div 
-            className={`flex-1 flex flex-col p-4 sm:p-6 overflow-y-auto bg-slate-50 dark:bg-zinc-950/20 ${mode === "dynamic" ? "cursor-text" : ""}`}
+            className="flex-1 flex flex-col p-4 sm:p-6 overflow-y-auto bg-slate-50 dark:bg-zinc-950/20"
             onClick={handlePreviewClick}
           >
-            {/* Preview Title */}
-            <h2 className="text-3xl font-bold mb-6 text-slate-950 dark:text-white pb-2 border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between">
-              <span>{note.title || "Untitled Note"}</span>
-              <div className="flex items-center space-x-1 text-xs text-slate-400 dark:text-zinc-500 font-normal">
-                <Clock className="w-3.5 h-3.5" />
-                <span>Updated {new Date(note.updatedAt).toLocaleTimeString()}</span>
-              </div>
-            </h2>
+            {/* Note Title Input */}
+            <input
+              type="text"
+              value={note.title}
+              onChange={(e) => onUpdateNote(note.id, { title: e.target.value })}
+              placeholder="Note Title"
+              className="w-full bg-transparent text-2xl font-bold border-none outline-none focus:ring-0 mb-4 text-slate-900 dark:text-white placeholder-slate-300 dark:placeholder-zinc-700"
+            />
 
             {/* Markdown rendered output with custom event interceptor */}
             <div
               className="markdown-body text-slate-800 dark:text-zinc-200 flex-1 prose dark:prose-invert max-w-none pb-12"
               dangerouslySetInnerHTML={{ __html: htmlContent }}
             />
+          </div>
+        )}
 
-
+        {/* CUSTOM WYSIWYG PANE (Dynamic Mode) */}
+        {mode === "dynamic" && (
+          <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-zinc-900">
+            {/* Note Title Input */}
+            <div className="px-4 sm:px-6 pt-4 sm:pt-6 shrink-0">
+              <input
+                type="text"
+                value={note.title}
+                onChange={(e) => onUpdateNote(note.id, { title: e.target.value })}
+                placeholder="Note Title"
+                className="w-full bg-transparent text-2xl font-bold border-none outline-none focus:ring-0 mb-4 text-slate-900 dark:text-white placeholder-slate-300 dark:placeholder-zinc-700"
+              />
+            </div>
+            
+            {/* Custom WYSIWYG Editor */}
+            <div className="flex-1 overflow-hidden">
+              <CustomWYSIWYG 
+                key={note.id} 
+                content={note.content} 
+                notes={notes}
+                onChange={(newContent) => onUpdateNote(note.id, { content: newContent })} 
+                onWikilinkClick={onWikilinkClick}
+              />
+            </div>
           </div>
         )}
 
