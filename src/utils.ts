@@ -63,6 +63,15 @@ export async function parseMarkdownToHtml(content: string, notes: Note[] = [], d
   // Parse standard Markdown
   let parsed = await marked.parse(content, { breaks: true, gfm: true });
   
+  // Replace Flashcards (Question :: Answer)
+  parsed = parsed.replace(/<p>(.+?)\s+::\s+(.+?)<\/p>/g, (match, q, a) => {
+    return `<p>${q} <span class="text-indigo-400 dark:text-indigo-600 font-bold mx-1">::</span> <span class="group relative inline-flex min-w-[2rem] bg-amber-100 dark:bg-amber-900/40 px-1.5 rounded-sm border-b-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap">${a}</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">...</span></span></p>`;
+  });
+
+  // Replace Cloze Deletions
+  parsed = parsed.replace(/\{\{(.*?)\}\}/g, '<span class="group relative inline-flex min-w-[2rem] bg-amber-100 dark:bg-amber-900/40 px-1.5 rounded-sm border-b-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap">$1</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">...</span></span>');
+
+  
   // Replace tags: #word with special statuses
   const tagRegex = /(^|\s|>)(#[\p{L}\p{N}_\-]+)/gu;
   parsed = parsed.replace(tagRegex, (_, prefix, tag) => {
@@ -782,6 +791,14 @@ export function generateSingleHtmlApp(notes: Note[]): string {
       // HTML Render
       const cleanContent = (note.content || "").replace(frontmatterRegex, "");
       let rawHtml = marked.parse(cleanContent, { breaks: true, gfm: true });
+      
+      // Parse Flashcards
+      rawHtml = rawHtml.replace(/<p>(.+?)\\s+::\\s+(.+?)<\\/p>/g, function(match, q, a) {
+        return '<p>' + q + ' <span class="text-indigo-400 dark:text-indigo-600 font-bold mx-1">::</span> <span class="group relative inline-flex min-w-[2rem] bg-amber-100 dark:bg-amber-900/40 px-1.5 rounded-sm border-b-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap">' + a + '</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">...</span></span></p>';
+      });
+
+      // Parse Cloze Deletions
+      rawHtml = rawHtml.replace(/\\{\\{(.*?)\\}\\}/g, '<span class="group relative inline-flex min-w-[2rem] bg-amber-100 dark:bg-amber-900/40 px-1.5 rounded-sm border-b-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap">$1</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">...</span></span>');
       
       // Parse [[Wikilinks]]
       const wikilinkRegex = /\\\\\\[\\\\\\[([^\\\\\\]|]+)(?:\\\\|[^\\\\\\]]+)?\\\\\\]\\\\\\]/g;

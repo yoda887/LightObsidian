@@ -48,6 +48,15 @@ const highlightMarkdown = (text: string) => {
 
     // Inline formatting
     let processed = line;
+    
+    // Flashcard Q :: A
+    processed = processed.replace(/(\s+::\s+)(.*)$/, (match, sep, answer) => {
+      return `<span class="text-indigo-400 dark:text-indigo-600 font-bold mx-1">${sep}</span><span class="text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1 rounded border-b-2 border-amber-500">${answer}</span>`;
+    });
+    
+    // Cloze Deletions
+    processed = processed.replace(/\{\{(.*?)\}\}/g, '<span class="text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1 rounded border-b-2 border-amber-500"><span class="md-token opacity-50">{{</span>$1<span class="md-token opacity-50">}}</span></span>');
+
     processed = processed.replace(/\*\*(.*?)\*\*/g, '<span class="md-bold"><span class="md-token">**</span>$1<span class="md-token">**</span></span>');
     processed = processed.replace(/\*(.*?)\*/g, '<span class="md-italic"><span class="md-token">*</span>$1<span class="md-token">*</span></span>');
     processed = processed.replace(/`(.*?)`/g, '<span class="md-code"><span class="md-token">`</span>$1<span class="md-token">`</span></span>');

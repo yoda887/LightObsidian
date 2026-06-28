@@ -324,11 +324,11 @@ export default function Editor({
     <div className="flex-1 flex flex-col overflow-hidden h-full bg-slate-50 dark:bg-zinc-950">
       
       {/* Workspace Toolbar */}
-      <div className="h-10 bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 px-4 flex items-center justify-between shrink-0 shadow-sm">
+      <div className="min-h-[40px] bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 px-4 flex items-center justify-between shrink-0 shadow-sm">
         
         {/* Editor controls / formatting helpers */}
         <div 
-          className="flex items-center space-x-1.5 overflow-x-auto py-1"
+          className="flex items-center gap-1.5 flex-wrap py-1"
           onMouseDown={(e) => e.preventDefault()}
         >
           <button
