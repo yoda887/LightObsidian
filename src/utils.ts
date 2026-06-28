@@ -193,6 +193,37 @@ export function updateYamlMetadata(content: string, updates: Record<string, any>
 }
 
 /**
+ * Fuzzy replacement helper mapping plain text selections to markdown.
+ */
+export function replacePlaintextInMarkdown(markdown: string, plainText: string, replacement: string): string {
+  const target = plainText.trim();
+  if (!target) return markdown;
+
+  // 1. Check literal match
+  const literalIdx = markdown.indexOf(target);
+  if (literalIdx > -1) {
+    return markdown.substring(0, literalIdx) + replacement + markdown.substring(literalIdx + target.length);
+  }
+
+  // 2. Fuzzy match across markdown tags using word-joining regex
+  const words = target.split(/\s+/).map(w => w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
+  if (words.length === 0) return markdown;
+  
+  const regexStr = words.join('(?:\\s*|[*_`[\\]{}!\\s]+)*');
+  try {
+    const regex = new RegExp(regexStr, 'i');
+    const match = markdown.match(regex);
+    if (match && match.index !== undefined) {
+      return markdown.substring(0, match.index) + replacement + markdown.substring(match.index + match[0].length);
+    }
+  } catch (e) {
+    console.error("Fuzzy replacement failed", e);
+  }
+  
+  return markdown.replace(target, replacement);
+}
+
+/**
  * Generates a fully self-contained HTML file which includes the Obsidian Lite editor,
  * beautiful styling via Tailwind CSS CDN, Lucide Icons, interactive Canvas Graph View,
  * and pre-packaged notes, with the ability to function as a Windows .hta application.

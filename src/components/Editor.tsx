@@ -39,9 +39,13 @@ interface EditorProps {
   settings: AppSettings;
   onUpdateNote: (id: string, updates: Partial<Note>) => void;
   onSelectNote: (id: string) => void;
-  onWikilinkClick: (title: string) => void;
-  isZenMode?: boolean;
-  onExtractNote?: (parentNoteId: string, extractText: string) => Promise<Note | null>;
+  onExtractNote?: (
+    parentNoteId: string,
+    extractText: string,
+    editorMode: string,
+    selectionStart?: number,
+    selectionEnd?: number
+  ) => Promise<Note | null>;
 }
 
 export default function Editor({
@@ -141,38 +145,17 @@ export default function Editor({
 
   const handleExtractSelection = async () => {
     if (!selectedText || !onExtractNote) return;
-    const newNote = await onExtractNote(note.id, selectedText);
-    if (!newNote) return;
     
-    const linkStr = `![[${newNote.title}]]`;
+    let start: number | undefined;
+    let end: number | undefined;
     
-    if (mode === "dynamic" && wysiwygRef.current) {
-      wysiwygRef.current.replaceSelection(linkStr);
-    } else if ((mode === "edit" || mode === "split") && textareaRef.current && textareaRef.current.selectionStart !== textareaRef.current.selectionEnd) {
-      const start = textareaRef.current.selectionStart;
-      const end = textareaRef.current.selectionEnd;
-      const val = textareaRef.current.value;
-      const newVal = val.substring(0, start) + linkStr + val.substring(end);
-      
-      if (settings.hideYaml) {
-        handleBodyChange(newVal);
-      } else {
-        onUpdateNote(note.id, { content: newVal });
-      }
-      
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.focus();
-          textareaRef.current.selectionStart = start + linkStr.length;
-          textareaRef.current.selectionEnd = start + linkStr.length;
-        }
-      }, 50);
-    } else {
-      const { frontmatter, body } = splitFrontmatter(note.content);
-      const newBody = replacePlaintextInMarkdown(body, selectedText, linkStr);
-      const newContent = frontmatter ? frontmatter + newBody : newBody;
-      onUpdateNote(note.id, { content: newContent });
+    if ((mode === "edit" || mode === "split") && textareaRef.current && textareaRef.current.selectionStart !== textareaRef.current.selectionEnd) {
+      start = textareaRef.current.selectionStart;
+      end = textareaRef.current.selectionEnd;
     }
+    
+    const newNote = await onExtractNote(note.id, selectedText, mode, start, end);
+    if (!newNote) return;
     
     window.getSelection()?.removeAllRanges();
     setSelectionCoords(null);
@@ -925,35 +908,6 @@ export default function Editor({
       )}
     </div>
   );
-}
-
-// Fuzzy replacement helper mapping plain text selections to markdown
-function replacePlaintextInMarkdown(markdown: string, plainText: string, replacement: string): string {
-  const target = plainText.trim();
-  if (!target) return markdown;
-
-  // 1. Check literal match
-  const literalIdx = markdown.indexOf(target);
-  if (literalIdx > -1) {
-    return markdown.substring(0, literalIdx) + replacement + markdown.substring(literalIdx + target.length);
-  }
-
-  // 2. Fuzzy match across markdown tags using word-joining regex
-  const words = target.split(/\s+/).map(w => w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
-  if (words.length === 0) return markdown;
-  
-  const regexStr = words.join('(?:\\s*|[*_`[\\]{}!\\s]+)*');
-  try {
-    const regex = new RegExp(regexStr, 'i');
-    const match = markdown.match(regex);
-    if (match && match.index !== undefined) {
-      return markdown.substring(0, match.index) + replacement + markdown.substring(match.index + match[0].length);
-    }
-  } catch (e) {
-    console.error("Fuzzy replacement failed", e);
-  }
-  
-  return markdown.replace(target, replacement);
 }
 
 // Projection helper to calculate text caret screen position

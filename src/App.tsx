@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Note } from "./types";
-import { generateSingleHtmlApp } from "./utils";
+import { generateSingleHtmlApp, splitFrontmatter, replacePlaintextInMarkdown } from "./utils";
 import { getAllNotes, putNote, deleteNote, clearNotes } from "./db";
 import Sidebar from "./components/Sidebar";
 import Editor from "./components/Editor";
@@ -538,7 +538,13 @@ export default function App() {
     }
   };
 
-  const handleExtractNote = async (parentNoteId: string, extractText: string) => {
+  const handleExtractNote = async (
+    parentNoteId: string,
+    extractText: string,
+    editorMode: string,
+    selectionStart?: number,
+    selectionEnd?: number
+  ) => {
     const parentNote = notes.find(n => n.id === parentNoteId);
     if (!parentNote) return null;
     
@@ -566,20 +572,46 @@ export default function App() {
       path: parentNote.path
     };
     
-    const updatedNotes = [...notes, newNote];
-    setNotes(updatedNotes);
-    putNote(newNote).catch(console.error);
+    const linkStr = `![[${title}]]`;
+    let updatedParentContent = "";
     
-    if (vaultHandle) {
-      try {
-        const fileHandle = await vaultHandle.getFileHandle(filename, { create: true });
-        const writable = await fileHandle.createWritable();
-        await writable.write(newNote.content);
-        await writable.close();
-      } catch (err) {
-        console.error("Failed to create extract in vault", err);
+    if (editorMode === "dynamic" || editorMode === "edit" || editorMode === "split") {
+      if (selectionStart !== undefined && selectionEnd !== undefined && selectionStart !== selectionEnd) {
+        const { frontmatter, body } = splitFrontmatter(parentNote.content);
+        const hideYamlActive = parentNote.content !== body;
+        const startsWithFm = parentNote.content.startsWith("---");
+        
+        if (startsWithFm && hideYamlActive) {
+          const newBody = body.substring(0, selectionStart) + linkStr + body.substring(selectionEnd);
+          updatedParentContent = frontmatter + newBody;
+        } else {
+          updatedParentContent = parentNote.content.substring(0, selectionStart) + linkStr + parentNote.content.substring(selectionEnd);
+        }
+      } else {
+        const { frontmatter, body } = splitFrontmatter(parentNote.content);
+        const newBody = replacePlaintextInMarkdown(body, extractText, linkStr);
+        updatedParentContent = frontmatter ? frontmatter + newBody : newBody;
       }
+    } else {
+      const { frontmatter, body } = splitFrontmatter(parentNote.content);
+      const newBody = replacePlaintextInMarkdown(body, extractText, linkStr);
+      updatedParentContent = frontmatter ? frontmatter + newBody : newBody;
     }
+    
+    const updatedParentNote: Note = {
+      ...parentNote,
+      content: updatedParentContent,
+      updatedAt: new Date().toISOString()
+    };
+    
+    setNotes(prev => {
+      const replaced = prev.map(n => n.id === parentNoteId ? updatedParentNote : n);
+      return [...replaced, newNote];
+    });
+    
+    putNote(newNote).catch(console.error);
+    putNote(updatedParentNote).catch(console.error);
+    
     return newNote;
   };
 
