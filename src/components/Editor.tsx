@@ -148,7 +148,7 @@ export default function Editor({
     
     if (mode === "dynamic" && wysiwygRef.current) {
       wysiwygRef.current.replaceSelection(linkStr);
-    } else if (textareaRef.current) {
+    } else if ((mode === "edit" || mode === "split") && textareaRef.current && textareaRef.current.selectionStart !== textareaRef.current.selectionEnd) {
       const start = textareaRef.current.selectionStart;
       const end = textareaRef.current.selectionEnd;
       const val = textareaRef.current.value;
@@ -167,6 +167,11 @@ export default function Editor({
           textareaRef.current.selectionEnd = start + linkStr.length;
         }
       }, 50);
+    } else {
+      const { frontmatter, body } = splitFrontmatter(note.content);
+      const newBody = replacePlaintextInMarkdown(body, selectedText, linkStr);
+      const newContent = frontmatter ? frontmatter + newBody : newBody;
+      onUpdateNote(note.id, { content: newContent });
     }
     
     window.getSelection()?.removeAllRanges();
@@ -920,6 +925,35 @@ export default function Editor({
       )}
     </div>
   );
+}
+
+// Fuzzy replacement helper mapping plain text selections to markdown
+function replacePlaintextInMarkdown(markdown: string, plainText: string, replacement: string): string {
+  const target = plainText.trim();
+  if (!target) return markdown;
+
+  // 1. Check literal match
+  const literalIdx = markdown.indexOf(target);
+  if (literalIdx > -1) {
+    return markdown.substring(0, literalIdx) + replacement + markdown.substring(literalIdx + target.length);
+  }
+
+  // 2. Fuzzy match across markdown tags using word-joining regex
+  const words = target.split(/\s+/).map(w => w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
+  if (words.length === 0) return markdown;
+  
+  const regexStr = words.join('(?:\\s*|[*_`[\\]{}!\\s]+)*');
+  try {
+    const regex = new RegExp(regexStr, 'i');
+    const match = markdown.match(regex);
+    if (match && match.index !== undefined) {
+      return markdown.substring(0, match.index) + replacement + markdown.substring(match.index + match[0].length);
+    }
+  } catch (e) {
+    console.error("Fuzzy replacement failed", e);
+  }
+  
+  return markdown.replace(target, replacement);
 }
 
 // Projection helper to calculate text caret screen position
