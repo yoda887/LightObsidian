@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Brain, RotateCcw, Check, Zap } from "lucide-react";
+import { X, Brain, RotateCcw, Check, Zap, FileText } from "lucide-react";
 import { Flashcard } from "../flashcards";
 
 interface ReviewModalProps {
@@ -7,9 +7,10 @@ interface ReviewModalProps {
   onClose: () => void;
   dueCards: Flashcard[];
   onReviewCard: (card: Flashcard, grade: "hard" | "good" | "easy") => void;
+  onNavigateToNote: (noteId: string) => void;
 }
 
-export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard }: ReviewModalProps) {
+export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, onNavigateToNote }: ReviewModalProps) {
   const [sessionCards, setSessionCards] = useState<Flashcard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -35,8 +36,8 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard }:
       setCurrentIndex(currentIndex + 1);
       setShowAnswer(false);
     } else {
-      // Finished
-      onClose();
+      // Finished: trigger finished screen show
+      setCurrentIndex(currentIndex + 1);
     }
   };
 
@@ -82,8 +83,21 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard }:
             </div>
           ) : (
             <div className="w-full h-full flex flex-col">
-              <div className="text-xs text-slate-400 dark:text-zinc-500 mb-6 text-center uppercase tracking-widest font-semibold">
+              <div className="text-xs text-slate-400 dark:text-zinc-500 mb-2 text-center uppercase tracking-widest font-semibold">
                 Card {currentIndex + 1} of {sessionCards.length}
+              </div>
+              
+              <div className="flex justify-center mb-6">
+                <button
+                  onClick={() => {
+                    onNavigateToNote(card.noteId);
+                    onClose();
+                  }}
+                  className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300 font-semibold hover:underline bg-transparent border-none cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Go to note: {card.noteTitle}</span>
+                </button>
               </div>
               
               <div className="flex-1 flex flex-col justify-center">

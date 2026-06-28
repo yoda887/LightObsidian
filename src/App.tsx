@@ -88,6 +88,18 @@ export default function App() {
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [isReviewOpen, setIsReviewOpen] = useState<boolean>(false);
   const [appSettings, setAppSettings] = useState<AppSettings>({ font: "inter", hideYaml: false });
+  const [focusQueue, setFocusQueue] = useState<Flashcard[]>(() => {
+    const saved = localStorage.getItem("lite_obsidian_focus_queue");
+    if (saved) {
+      try { return JSON.parse(saved); } catch(e) { console.error(e); }
+    }
+    return [];
+  });
+  const [sidebarInitialTab, setSidebarInitialTab] = useState<"links" | "tags" | "context" | "focus">("links");
+
+  useEffect(() => {
+    localStorage.setItem("lite_obsidian_focus_queue", JSON.stringify(focusQueue));
+  }, [focusQueue]);
 
   useEffect(() => {
     if (darkMode) {
@@ -519,6 +531,13 @@ export default function App() {
 
     const newContent = updateFlashcardInContent(note.content, card, grade);
     handleUpdateNote(note.id, { content: newContent });
+
+    if (grade === "hard") {
+      setFocusQueue(prev => {
+        if (prev.some(p => p.question === card.question && p.noteId === card.noteId)) return prev;
+        return [...prev, card];
+      });
+    }
   };
 
   const dueCards = getDueCards(notes);
@@ -808,6 +827,10 @@ export default function App() {
           <RightSidebar
             currentNote={currentNote}
             notes={notes}
+            focusQueue={focusQueue}
+            onRemoveFromQueue={(index) => setFocusQueue(prev => prev.filter((_, idx) => idx !== index))}
+            onClearFocusQueue={() => setFocusQueue([])}
+            initialTab={sidebarInitialTab}
             onClose={() => setIsRightSidebarOpen(false)}
             onSelectNote={handleSelectNote}
           />
@@ -839,9 +862,16 @@ export default function App() {
 
       <ReviewModal
         isOpen={isReviewOpen}
-        onClose={() => setIsReviewOpen(false)}
+        onClose={() => {
+          setIsReviewOpen(false);
+          if (focusQueue.length > 0) {
+            setSidebarInitialTab("focus");
+            setIsRightSidebarOpen(true);
+          }
+        }}
         dueCards={dueCards}
         onReviewCard={handleReviewCard}
+        onNavigateToNote={handleSelectNote}
       />
 
       <HelpDialog
