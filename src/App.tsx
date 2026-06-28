@@ -87,7 +87,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [isReviewOpen, setIsReviewOpen] = useState<boolean>(false);
-  const [appSettings, setAppSettings] = useState<AppSettings>({ font: "inter" });
+  const [appSettings, setAppSettings] = useState<AppSettings>({ font: "inter", hideYaml: false });
 
   useEffect(() => {
     if (darkMode) {
@@ -775,6 +775,7 @@ export default function App() {
                 note={currentNote}
                 notes={notes}
                 mode={appMode}
+                settings={appSettings}
                 onUpdateNote={handleUpdateNote}
                 onSelectNote={handleSelectNote}
                 onWikilinkClick={handleWikilinkClick}

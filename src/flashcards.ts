@@ -316,52 +316,14 @@ export function updateFlashcardInContent(content: string, card: Flashcard, grade
       ease: newEase
     });
   } else {
-    let cleanedContent = content.replace(card.fullMatch, "");
-    cleanedContent = cleanedContent.replace(/\r?\n\r?\n\r?\n/g, "\n\n");
-    
-    return updateYamlCardsInContent(cleanedContent, card.question, {
-      question: card.question,
-      answer: card.answer,
-      nextReview: nextReviewTime,
-      interval: newInterval,
-      ease: newEase
-    });
+    const nextDateStr = nextDate.toISOString().split('T')[0];
+    const newCardStr = `${card.question} :: ${card.answer}\n<!--SR:${nextDateStr},${newInterval},${newEase.toFixed(1)}-->`;
+    return content.replace(card.fullMatch, newCardStr);
   }
 }
 
-// Prepend or add new card in YAML frontmatter format
+// Appends a traditional inline card template to the note content
 export function insertFlashcardTemplate(content: string): string {
-  const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
-  if (!fmMatch) {
-    return `---\ncards:\n  - question: "Question"\n    answer: "Answer"\n---\n${content}`;
-  }
-
-  const fmText = fmMatch[1];
-  const bodyText = content.substring(fmMatch[0].length);
-
-  const lines = fmText.split(/\r?\n/);
-  const newFmLines: string[] = [];
-  let hasCardsKey = false;
-  let inserted = false;
-
-  for (let line of lines) {
-    newFmLines.push(line);
-    if (line.trim() === "cards:") {
-      hasCardsKey = true;
-      newFmLines.push(`  - question: "Question"`);
-      newFmLines.push(`    answer: "Answer"`);
-      inserted = true;
-    }
-  }
-
-  if (!hasCardsKey) {
-    newFmLines.push("cards:");
-    newFmLines.push(`  - question: "Question"`);
-    newFmLines.push(`    answer: "Answer"`);
-  } else if (!inserted) {
-    newFmLines.push(`  - question: "Question"`);
-    newFmLines.push(`    answer: "Answer"`);
-  }
-
-  return `---\n${newFmLines.join("\n")}\n---\n${bodyText}`;
+  const template = "\n\nQuestion :: Answer";
+  return content + template;
 }

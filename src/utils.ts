@@ -88,6 +88,50 @@ export async function parseMarkdownToHtml(content: string, notes: Note[] = [], d
 }
 
 /**
+ * Splits raw note content into its frontmatter and body.
+ */
+export function splitFrontmatter(content: string): { frontmatter: string; body: string } {
+  const frontmatterRegex = /^---\r?\n([\s\S]*?\r?\n)---(?:\r?\n|$)/;
+  const match = content.match(frontmatterRegex);
+  if (match) {
+    return {
+      frontmatter: match[0],
+      body: content.substring(match[0].length),
+    };
+  }
+  return { frontmatter: "", body: content };
+}
+
+/**
+ * Parses raw frontmatter content into a key-value object.
+ */
+export function parseYamlMetadata(yamlText: string): Record<string, string | string[]> {
+  const metadata: Record<string, string | string[]> = {};
+  const cleanYaml = yamlText.replace(/^---\r?\n/, "").replace(/\r?\n---(?:\r?\n|$)/, "");
+  const lines = cleanYaml.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const colonIndex = trimmed.indexOf(':');
+    if (colonIndex > -1) {
+      const key = trimmed.substring(0, colonIndex).trim();
+      let value = trimmed.substring(colonIndex + 1).trim();
+      if (value.startsWith('[') && value.endsWith(']')) {
+        const arrayVals = value.substring(1, value.length - 1)
+          .split(',')
+          .map(v => v.trim().replace(/^["']|["']$/g, ""))
+          .filter(Boolean);
+        metadata[key] = arrayVals;
+      } else {
+        value = value.replace(/^["']|["']$/g, "");
+        metadata[key] = value;
+      }
+    }
+  }
+  return metadata;
+}
+
+/**
  * Generates a fully self-contained HTML file which includes the Obsidian Lite editor,
  * beautiful styling via Tailwind CSS CDN, Lucide Icons, interactive Canvas Graph View,
  * and pre-packaged notes, with the ability to function as a Windows .hta application.
@@ -230,8 +274,14 @@ export function generateSingleHtmlApp(notes: Note[]): string {
           <button id="btn-graph-mode" onclick="setMode('graph')" class="px-3 py-1 rounded text-sm font-medium text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800">Graph Connection</button>
         </div>
         
-        <div id="note-meta" class="text-xs text-slate-400 dark:text-zinc-500">
-          <!-- Updated time -->
+        <div class="flex items-center space-x-4">
+          <label class="flex items-center space-x-1.5 text-xs text-slate-500 dark:text-zinc-400 cursor-pointer select-none">
+            <input type="checkbox" id="hide-yaml-checkbox" onchange="toggleHideYaml()" class="rounded border-slate-300 dark:border-zinc-700 text-violet-600 focus:ring-violet-500 bg-transparent">
+            <span>Hide YAML</span>
+          </label>
+          <div id="note-meta" class="text-xs text-slate-400 dark:text-zinc-500">
+            <!-- Updated time -->
+          </div>
         </div>
       </div>
 
@@ -241,12 +291,14 @@ export function generateSingleHtmlApp(notes: Note[]): string {
         <!-- Editor view -->
         <div id="editor-view" class="flex-1 flex flex-col p-4 overflow-hidden">
           <input type="text" id="note-title-input" oninput="handleTitleChange()" placeholder="Note Title" class="bg-transparent text-2xl font-bold border-none outline-none focus:ring-0 mb-4 text-slate-950 dark:text-white placeholder-slate-300 dark:placeholder-zinc-700">
+          <div id="editor-yaml-container"></div>
           <textarea id="note-content-textarea" oninput="handleContentChange()" placeholder="Start typing... Use [[Note Title]] to link notes." class="flex-1 w-full bg-transparent border-none outline-none resize-none focus:ring-0 font-mono text-sm leading-relaxed overflow-y-auto text-slate-800 dark:text-zinc-200 placeholder-slate-300 dark:placeholder-zinc-700"></textarea>
         </div>
 
         <!-- Preview view -->
         <div id="preview-view" class="flex-1 hidden p-6 overflow-y-auto">
           <h2 id="preview-title" class="text-3xl font-bold mb-6 text-slate-950 dark:text-white pb-2 border-b border-slate-100 dark:border-zinc-800"></h2>
+          <div id="preview-yaml-container"></div>
           <div id="preview-html" class="markdown-body text-slate-800 dark:text-zinc-200"></div>
           
           <!-- Backlinks block -->
@@ -284,6 +336,8 @@ export function generateSingleHtmlApp(notes: Note[]): string {
     let currentNoteId = "";
     let currentMode = "edit"; // edit, preview, graph
     let isDarkMode = false;
+    let hideYaml = false;
+    let isYamlCollapsed = false;
     
     // Graph canvas panning/zooming
     let panX = 0;
@@ -336,6 +390,11 @@ export function generateSingleHtmlApp(notes: Note[]): string {
       }
 
       updateThemeButton();
+      
+      // YAML setup
+      hideYaml = localStorage.getItem("hide_yaml") === "true";
+      isYamlCollapsed = hideYaml;
+      document.getElementById("hide-yaml-checkbox").checked = hideYaml;
       
       // Render
       renderNotesList();
@@ -469,6 +528,107 @@ export function generateSingleHtmlApp(notes: Note[]): string {
       }
     }
 
+    function toggleHideYaml() {
+      hideYaml = document.getElementById("hide-yaml-checkbox").checked;
+      localStorage.setItem("hide_yaml", hideYaml ? "true" : "false");
+      isYamlCollapsed = hideYaml;
+      const note = notes.find(n => n.id === currentNoteId);
+      if (note) {
+        selectNote(currentNoteId);
+      }
+    }
+
+    function toggleYamlCollapseUI() {
+      isYamlCollapsed = !isYamlCollapsed;
+      const note = notes.find(n => n.id === currentNoteId);
+      if (note) {
+        renderCollapsibleYamlEditorForNote(note);
+        renderMarkdownPreview(note);
+      }
+    }
+
+    function renderCollapsibleYamlEditorForNote(note) {
+      const container = document.getElementById("editor-yaml-container");
+      if (!hideYaml) {
+        container.innerHTML = "";
+        return;
+      }
+
+      const frontmatterRegex = /^---\\r?\\n([\\s\\S]*?\\r?\\n)---(?:\\r?\\n|$)/;
+      const match = (note.content || "").match(frontmatterRegex);
+      const frontmatter = match ? match[0] : "";
+      const yamlInner = frontmatter
+        ? frontmatter.replace(/^---\\r?\\n/, "").replace(/\\r?\\n---(?:\\r?\\n|$)/, "")
+        : "";
+      
+      const keyCount = yamlInner ? yamlInner.split('\n').filter(Boolean).length : 0;
+      const keyCountText = yamlInner ? "(" + keyCount + " keys)" : "(empty)";
+
+      container.innerHTML = 
+        '<div class="mb-4 border border-slate-200 dark:border-zinc-800 rounded-lg overflow-hidden bg-slate-50 dark:bg-zinc-950/40 shadow-sm transition-all duration-200 shrink-0">' +
+          '<div onclick="toggleYamlCollapseUI()" class="flex items-center justify-between px-4 py-2 bg-slate-100/50 dark:bg-zinc-900/50 border-b border-slate-200 dark:border-zinc-800 cursor-pointer select-none text-xs font-semibold text-slate-600 dark:text-zinc-400 hover:bg-slate-200/50 dark:hover:bg-zinc-800/80 transition-colors">' +
+            '<span class="flex items-center gap-1.5">' +
+              '<i data-lucide="settings" class="w-3.5 h-3.5 text-indigo-500"></i>' +
+              '<span>YAML Frontmatter <span id="yaml-key-count" class="text-slate-400 font-normal">' + keyCountText + '</span></span>' +
+            '</span>' +
+            '<div class="flex items-center gap-1">' +
+              '<span class="text-[10px] text-slate-400">' + (isYamlCollapsed ? "Show" : "Hide") + '</span>' +
+              '<i data-lucide="chevron-right" class="w-3.5 h-3.5 transition-transform duration-200 ' + (isYamlCollapsed ? "" : "transform rotate-90") + '"></i>' +
+            '</div>' +
+          '</div>' +
+          '<div id="yaml-editor-body" class="' + (isYamlCollapsed ? 'hidden' : 'p-3 bg-white dark:bg-zinc-900') + '">' +
+            '<textarea oninput="handleYamlEditorChange(this.value)" placeholder="tags: [study, dev]&#10;author: John Doe&#10;status: active" rows="4" class="w-full bg-slate-50/50 dark:bg-zinc-950/30 border border-slate-200 dark:border-zinc-800 rounded p-2 text-xs font-mono text-slate-800 dark:text-zinc-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 resize-y">' + yamlInner + '</textarea>' +
+          '</div>' +
+        '</div>';
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function handleYamlEditorChange(newYaml) {
+      const note = notes.find(n => n.id === currentNoteId);
+      if (note) {
+        const frontmatterRegex = /^---\\r?\\n([\\s\\S]*?\\r?\\n)---(?:\\r?\\n|$)/;
+        const match = (note.content || "").match(frontmatterRegex);
+        const currentFrontmatter = match ? match[0] : "";
+        const body = (note.content || "").substring(currentFrontmatter.length);
+        
+        const trimmedYaml = newYaml.trim();
+        const newFrontmatter = trimmedYaml ? "---\\n" + trimmedYaml + "\\n---\\n" : "";
+        note.content = newFrontmatter + body;
+        note.updatedAt = new Date().toISOString();
+        saveNotes();
+        renderMarkdownPreview(note);
+        
+        const keyCount = trimmedYaml ? trimmedYaml.split('\n').filter(Boolean).length : 0;
+        document.getElementById("yaml-key-count").innerText = trimmedYaml ? "(" + keyCount + " keys)" : "(empty)";
+      }
+    }
+
+    function parseYamlMetadata(yamlText) {
+      const metadata = {};
+      const cleanYaml = yamlText.replace(/^---\\r?\\n/, "").replace(/\\r?\\n---(?:\\r?\\n|$)/, "");
+      const lines = cleanYaml.split(/\\r?\\n/);
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const colonIndex = trimmed.indexOf(':');
+        if (colonIndex > -1) {
+          const key = trimmed.substring(0, colonIndex).trim();
+          let value = trimmed.substring(colonIndex + 1).trim();
+          if (value.startsWith('[') && value.endsWith(']')) {
+            const arrayVals = value.substring(1, value.length - 1)
+              .split(',')
+              .map(v => v.trim().replace(/^["']|["']$/g, ""))
+              .filter(Boolean);
+            metadata[key] = arrayVals;
+          } else {
+            value = value.replace(/^["']|["']$/g, "");
+            metadata[key] = value;
+          }
+        }
+      }
+      return metadata;
+    }
+
     function clearWorkspace() {
       currentNoteId = "";
       document.getElementById("note-title-input").value = "";
@@ -476,6 +636,8 @@ export function generateSingleHtmlApp(notes: Note[]): string {
       document.getElementById("preview-title").innerText = "";
       document.getElementById("preview-html").innerHTML = "";
       document.getElementById("note-meta").innerText = "";
+      document.getElementById("editor-yaml-container").innerHTML = "";
+      document.getElementById("preview-yaml-container").innerHTML = "";
     }
 
     // Select Note to load in editor/preview
@@ -487,7 +649,24 @@ export function generateSingleHtmlApp(notes: Note[]): string {
 
       // Update inputs
       document.getElementById("note-title-input").value = note.title;
-      document.getElementById("note-content-textarea").value = note.content;
+
+      // Split frontmatter and body
+      const frontmatterRegex = /^---\\r?\\n([\\s\\S]*?\\r?\\n)---(?:\\r?\\n|$)/;
+      const match = (note.content || "").match(frontmatterRegex);
+      let frontmatter = "";
+      let body = note.content || "";
+      if (match) {
+        frontmatter = match[0];
+        body = (note.content || "").substring(frontmatter.length);
+      }
+
+      if (hideYaml) {
+        document.getElementById("note-content-textarea").value = body;
+        renderCollapsibleYamlEditorForNote(note);
+      } else {
+        document.getElementById("note-content-textarea").value = note.content;
+        document.getElementById("editor-yaml-container").innerHTML = "";
+      }
 
       // Update metadata display
       const updatedDate = new Date(note.updatedAt).toLocaleString();
@@ -527,7 +706,14 @@ export function generateSingleHtmlApp(notes: Note[]): string {
       const val = document.getElementById("note-content-textarea").value;
       const note = notes.find(n => n.id === currentNoteId);
       if (note) {
-        note.content = val;
+        if (hideYaml) {
+          const frontmatterRegex = /^---\\r?\\n([\\s\\S]*?\\r?\\n)---(?:\\r?\\n|$)/;
+          const match = (note.content || "").match(frontmatterRegex);
+          const currentFrontmatter = match ? match[0] : "";
+          note.content = currentFrontmatter + val;
+        } else {
+          note.content = val;
+        }
         note.updatedAt = new Date().toISOString();
         saveNotes();
         renderMarkdownPreview(note);
@@ -539,8 +725,61 @@ export function generateSingleHtmlApp(notes: Note[]): string {
       // Title
       document.getElementById("preview-title").innerText = note.title || "Untitled Note";
 
+      // Note Metadata Block
+      const previewYamlContainer = document.getElementById("preview-yaml-container");
+      const frontmatterRegex = /^---\\r?\\n([\\s\\S]*?\\r?\\n)---(?:\\r?\\n|$)/;
+      const match = (note.content || "").match(frontmatterRegex);
+      const frontmatter = match ? match[0] : "";
+      
+      if (frontmatter) {
+        const metadata = parseYamlMetadata(frontmatter);
+        const keys = Object.keys(metadata);
+        if (keys.length > 0) {
+          let rowsHtml = "";
+          for (const key of keys) {
+            const val = metadata[key];
+            let valHtml = "";
+            if (Array.isArray(val)) {
+              valHtml = '<div class="flex flex-wrap gap-1">';
+              for (const tag of val) {
+                valHtml += '<span class="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 rounded text-[10px] font-medium text-indigo-600 dark:text-indigo-400">' + tag + '</span>';
+              }
+              valHtml += '</div>';
+            } else {
+              valHtml = '<span class="font-mono bg-slate-50 dark:bg-zinc-950 px-1 py-0.5 rounded border border-slate-100 dark:border-zinc-800 text-[11px]">' + val + '</span>';
+            }
+
+            rowsHtml += 
+              '<div class="grid grid-cols-3 gap-2 text-xs border-b border-slate-100 dark:border-zinc-850 pb-2 last:border-0 last:pb-0">' +
+                '<span class="font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider text-[10px]">' + key + '</span>' +
+                '<span class="col-span-2 text-slate-800 dark:text-zinc-200">' + valHtml + '</span>' +
+              '</div>';
+          }
+
+          previewYamlContainer.innerHTML = 
+            '<div class="mb-6 border border-slate-200 dark:border-zinc-800 rounded-lg overflow-hidden bg-white dark:bg-zinc-900 shadow-sm transition-all duration-200 shrink-0">' +
+              '<div onclick="toggleYamlCollapseUI()" class="flex items-center justify-between px-4 py-2 bg-slate-50 dark:bg-zinc-950 border-b border-slate-200 dark:border-zinc-800 cursor-pointer select-none text-xs font-semibold text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900/80 transition-colors">' +
+                '<span class="flex items-center gap-1.5">' +
+                  '<i data-lucide="settings" class="w-3.5 h-3.5 text-indigo-500"></i>' +
+                  '<span>Note Metadata (' + keys.length + ' keys)</span>' +
+                '</span>' +
+                '<div class="flex items-center gap-1">' +
+                  '<span class="text-[10px] text-slate-400">' + (isYamlCollapsed ? "Show" : "Hide") + '</span>' +
+                  '<i data-lucide="chevron-right" class="w-3.5 h-3.5 transition-transform duration-200 ' + (isYamlCollapsed ? "" : "transform rotate-90") + '"></i>' +
+                '</div>' +
+              '</div>' +
+              '<div class="' + (isYamlCollapsed ? 'hidden' : 'p-4 space-y-3 bg-white dark:bg-zinc-900') + '">' +
+                rowsHtml +
+              '</div>' +
+            '</div>';
+        } else {
+          previewYamlContainer.innerHTML = "";
+        }
+      } else {
+        previewYamlContainer.innerHTML = "";
+      }
+
       // HTML Render
-      const frontmatterRegex = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/;
       const cleanContent = (note.content || "").replace(frontmatterRegex, "");
       let rawHtml = marked.parse(cleanContent, { breaks: true, gfm: true });
       
@@ -556,6 +795,8 @@ export function generateSingleHtmlApp(notes: Note[]): string {
 
       // Process Backlinks for this note
       renderBacklinks(note.title);
+
+      if (window.lucide) window.lucide.createIcons();
     }
 
     // Render Backlinks List

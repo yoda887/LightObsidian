@@ -5,10 +5,11 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import { Note } from "../types";
-import { parseMarkdownToHtml } from "../utils";
+import { parseMarkdownToHtml, splitFrontmatter, parseYamlMetadata } from "../utils";
 import { insertFlashcardTemplate } from "../flashcards";
 import { CustomWYSIWYG, CustomWYSIWYGRef } from "./CustomWYSIWYG";
 import TemplateModal from "./TemplateModal";
+import { AppSettings } from "./SettingsDialog";
 import {
   Heading1,
   Bold,
@@ -26,12 +27,14 @@ import {
   Tag,
   Frame,
   Brain,
+  Settings,
 } from "lucide-react";
 
 interface EditorProps {
   note: Note;
   notes: Note[];
   mode: "edit" | "preview" | "split" | "dynamic";
+  settings: AppSettings;
   onUpdateNote: (id: string, updates: Partial<Note>) => void;
   onSelectNote: (id: string) => void;
   onWikilinkClick: (title: string) => void;
@@ -41,6 +44,7 @@ export default function Editor({
   note,
   notes,
   mode,
+  settings,
   onUpdateNote,
   onSelectNote,
   onWikilinkClick,
@@ -50,6 +54,12 @@ export default function Editor({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const wysiwygRef = useRef<CustomWYSIWYGRef | null>(null);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [isYamlCollapsed, setIsYamlCollapsed] = useState(settings.hideYaml ?? false);
+
+  // Sync collapsed state when setting changes
+  useEffect(() => {
+    setIsYamlCollapsed(settings.hideYaml ?? false);
+  }, [settings.hideYaml]);
 
   // Derive templates from notes
   const templates = notes.filter(n => n.path === "Templates" || n.id.startsWith("Templates/"));
@@ -144,6 +154,23 @@ export default function Editor({
     onUpdateNote(note.id, { content: updatedContent });
   };
 
+  const { frontmatter, body } = splitFrontmatter(note.content);
+  const yamlInner = frontmatter
+    ? frontmatter.replace(/^---\r?\n/, "").replace(/\r?\n---(?:\r?\n|$)/, "")
+    : "";
+
+  const handleBodyChange = (newBody: string) => {
+    const newContent = frontmatter ? frontmatter + newBody : newBody;
+    onUpdateNote(note.id, { content: newContent });
+  };
+
+  const handleYamlChange = (newYaml: string) => {
+    const trimmedYaml = newYaml.trim();
+    const newFrontmatter = trimmedYaml ? `---\n${trimmedYaml}\n---\n` : "";
+    const newContent = newFrontmatter + body;
+    onUpdateNote(note.id, { content: newContent });
+  };
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full bg-slate-50 dark:bg-zinc-950">
       
@@ -234,7 +261,7 @@ export default function Editor({
           <button
             onClick={handleInsertFlashcard}
             className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded text-indigo-600 dark:text-indigo-400 transition-colors cursor-pointer flex items-center space-x-1 font-mono text-xs font-semibold"
-            title="Insert Flashcard (YAML)"
+            title="Insert Flashcard (Inline)"
           >
             <Brain className="w-4 h-4" />
             <span className="hidden sm:inline">Card</span>
@@ -271,11 +298,47 @@ export default function Editor({
               className="w-full bg-transparent text-2xl font-bold border-none outline-none focus:ring-0 mb-4 text-slate-900 dark:text-white placeholder-slate-300 dark:placeholder-zinc-700"
             />
             
+            {/* Collapsible YAML block (only if hideYaml is active) */}
+            {settings.hideYaml && (
+              <div className="mb-4 border border-slate-200 dark:border-zinc-800 rounded-lg overflow-hidden bg-slate-50 dark:bg-zinc-950/40 shadow-sm transition-all duration-200 shrink-0">
+                <div 
+                  onClick={() => setIsYamlCollapsed(!isYamlCollapsed)}
+                  className="flex items-center justify-between px-4 py-2 bg-slate-100/50 dark:bg-zinc-900/50 border-b border-slate-200 dark:border-zinc-800 cursor-pointer select-none text-xs font-semibold text-slate-600 dark:text-zinc-400 hover:bg-slate-200/50 dark:hover:bg-zinc-800/80 transition-colors"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Settings className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>YAML Frontmatter {frontmatter ? `(${yamlInner.split('\n').filter(Boolean).length} keys)` : "(empty)"}</span>
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400">{isYamlCollapsed ? "Show" : "Hide"}</span>
+                    <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isYamlCollapsed ? "" : "rotate-90"}`} />
+                  </div>
+                </div>
+                {!isYamlCollapsed && (
+                  <div className="p-3 bg-white dark:bg-zinc-900">
+                    <textarea
+                      value={yamlInner}
+                      onChange={(e) => handleYamlChange(e.target.value)}
+                      placeholder="tags: [study, dev]&#10;author: John Doe&#10;status: active"
+                      rows={4}
+                      className="w-full bg-slate-50/50 dark:bg-zinc-950/30 border border-slate-200 dark:border-zinc-800 rounded p-2 text-xs font-mono text-slate-800 dark:text-zinc-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 resize-y"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            
             {/* Note content textarea */}
             <textarea
               ref={textareaRef}
-              value={note.content}
-              onChange={(e) => onUpdateNote(note.id, { content: e.target.value })}
+              value={settings.hideYaml ? body : note.content}
+              onChange={(e) => {
+                if (settings.hideYaml) {
+                  handleBodyChange(e.target.value);
+                } else {
+                  onUpdateNote(note.id, { content: e.target.value });
+                }
+              }}
               placeholder="Start writing... Type [[Other Note]] to create/link notes."
               className="flex-1 w-full bg-transparent border-none outline-none resize-none focus:ring-0 text-sm leading-relaxed overflow-y-auto text-slate-800 dark:text-zinc-200 placeholder-slate-300 dark:placeholder-zinc-700"
               style={{ fontFamily: 'var(--font-editor, inherit)' }}
@@ -299,6 +362,49 @@ export default function Editor({
               placeholder="Note Title"
               className="w-full bg-transparent text-2xl font-bold border-none outline-none focus:ring-0 mb-4 text-slate-900 dark:text-white placeholder-slate-300 dark:placeholder-zinc-700"
             />
+
+            {/* Note Metadata Block */}
+            {frontmatter && Object.keys(parseYamlMetadata(frontmatter)).length > 0 && (
+              <div className="mb-6 border border-slate-200 dark:border-zinc-800 rounded-lg overflow-hidden bg-white dark:bg-zinc-900 shadow-sm transition-all duration-200 shrink-0">
+                <div 
+                  onClick={() => setIsYamlCollapsed(!isYamlCollapsed)}
+                  className="flex items-center justify-between px-4 py-2 bg-slate-50 dark:bg-zinc-950 border-b border-slate-200 dark:border-zinc-800 cursor-pointer select-none text-xs font-semibold text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900/80 transition-colors"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Settings className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Note Metadata ({Object.keys(parseYamlMetadata(frontmatter)).length} keys)</span>
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400">{isYamlCollapsed ? "Show" : "Hide"}</span>
+                    <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isYamlCollapsed ? "" : "rotate-90"}`} />
+                  </div>
+                </div>
+                {!isYamlCollapsed && (
+                  <div className="p-4 space-y-3 bg-white dark:bg-zinc-900">
+                    {Object.entries(parseYamlMetadata(frontmatter)).map(([key, val]) => (
+                      <div key={key} className="grid grid-cols-3 gap-2 text-xs border-b border-slate-100 dark:border-zinc-850 pb-2 last:border-0 last:pb-0">
+                        <span className="font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider text-[10px]">{key}</span>
+                        <span className="col-span-2 text-slate-800 dark:text-zinc-200">
+                          {Array.isArray(val) ? (
+                            <div className="flex flex-wrap gap-1">
+                              {val.map(tag => (
+                                <span key={tag} className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 rounded text-[10px] font-medium text-indigo-600 dark:text-indigo-400">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="font-mono bg-slate-50 dark:bg-zinc-950 px-1 py-0.5 rounded border border-slate-100 dark:border-zinc-800 text-[11px]">
+                              {val}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Markdown rendered output with custom event interceptor */}
             <div
@@ -324,14 +430,50 @@ export default function Editor({
               />
             </div>
             
+            {/* Collapsible YAML block (only if hideYaml is active) */}
+            {settings.hideYaml && (
+              <div className="mx-4 sm:mx-6 mb-4 border border-slate-200 dark:border-zinc-800 rounded-lg overflow-hidden bg-slate-50 dark:bg-zinc-950/40 shadow-sm transition-all duration-200 shrink-0">
+                <div 
+                  onClick={() => setIsYamlCollapsed(!isYamlCollapsed)}
+                  className="flex items-center justify-between px-4 py-2 bg-slate-100/50 dark:bg-zinc-900/50 border-b border-slate-200 dark:border-zinc-800 cursor-pointer select-none text-xs font-semibold text-slate-600 dark:text-zinc-400 hover:bg-slate-200/50 dark:hover:bg-zinc-800/80 transition-colors"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Settings className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>YAML Frontmatter {frontmatter ? `(${yamlInner.split('\n').filter(Boolean).length} keys)` : "(empty)"}</span>
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400">{isYamlCollapsed ? "Show" : "Hide"}</span>
+                    <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isYamlCollapsed ? "" : "rotate-90"}`} />
+                  </div>
+                </div>
+                {!isYamlCollapsed && (
+                  <div className="p-3 bg-white dark:bg-zinc-900">
+                    <textarea
+                      value={yamlInner}
+                      onChange={(e) => handleYamlChange(e.target.value)}
+                      placeholder="tags: [study, dev]&#10;author: John Doe&#10;status: active"
+                      rows={4}
+                      className="w-full bg-slate-50/50 dark:bg-zinc-950/30 border border-slate-200 dark:border-zinc-800 rounded p-2 text-xs font-mono text-slate-800 dark:text-zinc-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 resize-y"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Custom WYSIWYG Editor */}
             <div className="flex-1 overflow-hidden">
               <CustomWYSIWYG 
                 ref={wysiwygRef}
                 key={note.createdAt} 
-                content={note.content} 
+                content={settings.hideYaml ? body : note.content} 
                 notes={notes}
-                onChange={(newContent) => onUpdateNote(note.id, { content: newContent })} 
+                onChange={(newContent) => {
+                  if (settings.hideYaml) {
+                    handleBodyChange(newContent);
+                  } else {
+                    onUpdateNote(note.id, { content: newContent });
+                  }
+                }} 
                 onWikilinkClick={onWikilinkClick}
               />
             </div>

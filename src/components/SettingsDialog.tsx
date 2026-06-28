@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 
 export interface AppSettings {
   font: "inter" | "system" | "serif" | "mono";
+  hideYaml?: boolean;
 }
 
 interface SettingsDialogProps {
@@ -88,6 +89,27 @@ export default function SettingsDialog({ isOpen, onClose, settings, onSettingsCh
                 <div className="text-xs opacity-75">Monospace font for a technical look.</div>
               </button>
             </div>
+          </div>
+
+          {/* Hide YAML Frontmatter Option */}
+          <div className="flex items-center justify-between p-4 border rounded-md border-slate-200 dark:border-zinc-700 bg-slate-50/50 dark:bg-zinc-950/20 shadow-sm">
+            <div className="pr-4">
+              <div className="text-sm font-semibold text-slate-800 dark:text-zinc-200">Hide YAML Frontmatter</div>
+              <div className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">Collapse and hide YAML metadata at the top of the editor and preview panes.</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onSettingsChange({ ...settings, hideYaml: !settings.hideYaml })}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                settings.hideYaml ? "bg-indigo-600" : "bg-slate-200 dark:bg-zinc-700"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  settings.hideYaml ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
           </div>
         </div>
       </div>
