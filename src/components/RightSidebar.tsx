@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Note } from "../types";
-import { Link, Hash, X, Sparkles, RotateCcw, Check, FileText } from "lucide-react";
+import { Link, Hash, X, Sparkles, RotateCcw, Check, FileText, Network } from "lucide-react";
 import { Flashcard } from "../flashcards";
 
 interface RightSidebarProps {
@@ -9,7 +9,7 @@ interface RightSidebarProps {
   focusQueue: Flashcard[];
   onRemoveFromQueue: (index: number) => void;
   onClearFocusQueue: () => void;
-  initialTab?: "links" | "tags" | "context" | "focus";
+  initialTab?: "links" | "tags" | "context" | "focus" | "graph";
   onClose: () => void;
   onSelectNote: (id: string) => void;
 }
@@ -24,8 +24,9 @@ export default function RightSidebar({
   onClose, 
   onSelectNote 
 }: RightSidebarProps) {
-  const [activeTab, setActiveTab] = useState<"links" | "tags" | "context" | "focus">(initialTab || "links");
+  const [activeTab, setActiveTab] = useState<"links" | "tags" | "context" | "focus" | "graph">(initialTab || "links");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
 
   // Sync tab with initialTab prop when it changes
   useEffect(() => {
@@ -104,6 +105,53 @@ export default function RightSidebar({
     };
   }, [currentNote, notes]);
 
+  const localGraphData = useMemo(() => {
+    if (!currentNote) return { nodes: [], links: [] };
+
+    // Unique connected note objects (either incoming or outgoing)
+    const connectedNotesMap = new Map<string, Note>();
+    
+    // 1. Add incoming links (backlinks)
+    incomingLinks.forEach(n => connectedNotesMap.set(n.id, n));
+    
+    // 2. Add outgoing links
+    notes.forEach(n => {
+      if (n.id === currentNote.id) return;
+      const isOutgoing = outgoingLinks.some(title => title.toLowerCase() === n.title.toLowerCase());
+      if (isOutgoing) {
+        connectedNotesMap.set(n.id, n);
+      }
+    });
+
+    const connectedNodes = Array.from(connectedNotesMap.values());
+    
+    const centerX = 112;
+    const centerY = 112;
+    const radius = 64;
+    const angleStep = connectedNodes.length > 0 ? (2 * Math.PI) / connectedNodes.length : 0;
+
+    const nodes = [
+      { id: currentNote.id, title: currentNote.title, x: centerX, y: centerY, isCenter: true },
+      ...connectedNodes.map((n, i) => {
+        const angle = i * angleStep;
+        return {
+          id: n.id,
+          title: n.title,
+          x: centerX + radius * Math.cos(angle),
+          y: centerY + radius * Math.sin(angle),
+          isCenter: false
+        };
+      })
+    ];
+
+    const links = connectedNodes.map(n => ({
+      sourceId: currentNote.id,
+      targetId: n.id
+    }));
+
+    return { nodes, links };
+  }, [currentNote, notes, incomingLinks, outgoingLinks]);
+
   const handleLinkClick = (title: string) => {
     // Find note by title
     const found = notes.find(n => n.title.toLowerCase() === title.toLowerCase());
@@ -142,6 +190,17 @@ export default function RightSidebar({
           title="Links (Backlinks & Outgoing)"
         >
           <Link className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => setActiveTab("graph")}
+          className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
+            activeTab === "graph" 
+              ? "text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" 
+              : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent"
+          }`}
+          title="Local Graph View (Локальный граф)"
+        >
+          <Network className="w-4 h-4" />
         </button>
         <button
           onClick={() => setActiveTab("context")}
@@ -244,6 +303,99 @@ export default function RightSidebar({
 
         {activeTab !== "focus" && !currentNote && (
           <div className="text-xs text-center text-slate-400 italic mt-10">No note selected</div>
+        )}
+
+        {currentNote && activeTab === "graph" && (
+          <div className="space-y-4">
+            <div className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-1">
+              Local Graph
+            </div>
+            
+            {localGraphData.nodes.length <= 1 ? (
+              <div className="text-center py-12 text-slate-400 dark:text-zinc-600 text-xs italic">
+                No connections for this note.
+              </div>
+            ) : (
+              <div className="w-full flex justify-center bg-slate-100/30 dark:bg-zinc-950/20 border border-slate-200 dark:border-zinc-800 rounded-xl p-2 select-none relative overflow-hidden">
+                <svg
+                  width="224"
+                  height="224"
+                  viewBox="0 0 224 224"
+                  className="overflow-visible"
+                >
+                  {/* Links */}
+                  {localGraphData.links.map((link, idx) => {
+                    const sourceNode = localGraphData.nodes.find(n => n.id === link.sourceId);
+                    const targetNode = localGraphData.nodes.find(n => n.id === link.targetId);
+                    if (!sourceNode || !targetNode) return null;
+                    return (
+                      <line
+                        key={`link-${idx}`}
+                        x1={sourceNode.x}
+                        y1={sourceNode.y}
+                        x2={targetNode.x}
+                        y2={targetNode.y}
+                        stroke="currentColor"
+                        className="text-slate-200 dark:text-zinc-800"
+                        strokeWidth="1.5"
+                      />
+                    );
+                  })}
+
+                  {/* Nodes */}
+                  {localGraphData.nodes.map((node) => {
+                    const isHovered = hoveredNodeId === node.id;
+                    return (
+                      <g
+                        key={node.id}
+                        onClick={() => onSelectNote(node.id)}
+                        onMouseEnter={() => setHoveredNodeId(node.id)}
+                        onMouseLeave={() => setHoveredNodeId(null)}
+                        className="cursor-pointer"
+                      >
+                        {node.isCenter && (
+                          <circle
+                            cx={node.x}
+                            cy={node.y}
+                            r={isHovered ? "13" : "11"}
+                            style={{ transition: "r 150ms ease-in-out" }}
+                            className="fill-indigo-500/20 dark:fill-indigo-400/10 animate-pulse"
+                          />
+                        )}
+                        <circle
+                          cx={node.x}
+                          cy={node.y}
+                          r={isHovered ? (node.isCenter ? "8" : "7") : (node.isCenter ? "6" : "5")}
+                          style={{ transition: "fill 150ms ease-in-out, r 150ms ease-in-out" }}
+                          className={`stroke-white dark:stroke-zinc-900 stroke-2 ${
+                            node.isCenter
+                              ? "fill-indigo-500 dark:fill-indigo-400"
+                              : isHovered
+                              ? "fill-indigo-500 dark:fill-indigo-400"
+                              : "fill-slate-400 dark:fill-zinc-600"
+                          }`}
+                        />
+                        <text
+                          x={node.x}
+                          y={node.y + 14}
+                          textAnchor="middle"
+                          className={`text-[9px] font-medium pointer-events-none select-none transition-colors duration-150 ${
+                            node.isCenter
+                              ? "fill-slate-800 dark:fill-zinc-200 font-bold"
+                              : isHovered
+                              ? "fill-indigo-600 dark:fill-indigo-400 font-semibold"
+                              : "fill-slate-500 dark:fill-zinc-400"
+                          }`}
+                        >
+                          {node.title.length > 12 ? `${node.title.substring(0, 10)}...` : node.title}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              </div>
+            )}
+          </div>
         )}
 
         {currentNote && activeTab === "links" && (

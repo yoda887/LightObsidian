@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import { Note } from "../types";
 import { parseMarkdownToHtml, splitFrontmatter, parseYamlMetadata } from "../utils";
 import { insertFlashcardTemplate } from "../flashcards";
@@ -171,6 +171,102 @@ export default function Editor({
     onUpdateNote(note.id, { content: newContent });
   };
 
+  // ----------------------------------------------------
+  // TAG AUTOCOMPLETE ENGINE
+  // ----------------------------------------------------
+  const allUniqueTags = useMemo(() => {
+    const tagRegex = /(?<=^|\s)#([\p{L}\p{N}_\-]+)/gu;
+    const tags = new Set<string>();
+    notes.forEach(n => {
+      let match;
+      while ((match = tagRegex.exec(n.content)) !== null) {
+        tags.add(match[1].trim());
+      }
+    });
+    return Array.from(tags);
+  }, [notes]);
+
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestionCoords, setSuggestionCoords] = useState({ top: 0, left: 0 });
+  const [filteredTags, setFilteredTags] = useState<string[]>([]);
+  const [activeSuggestionIdx, setActiveSuggestionIdx] = useState(0);
+  const [triggerIndex, setTriggerIndex] = useState(-1);
+
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    const pos = e.target.selectionStart;
+
+    const textBeforeCursor = val.substring(0, pos);
+    const lastWordMatch = textBeforeCursor.match(/#[\p{L}\p{N}_\-]*$/u);
+
+    if (lastWordMatch && lastWordMatch.index !== undefined) {
+      const query = lastWordMatch[0].substring(1);
+      const filtered = allUniqueTags.filter(tag =>
+        tag.toLowerCase().startsWith(query.toLowerCase())
+      );
+
+      if (filtered.length > 0) {
+        setFilteredTags(filtered);
+        setShowSuggestions(true);
+        setTriggerIndex(lastWordMatch.index);
+        setActiveSuggestionIdx(0);
+
+        if (textareaRef.current) {
+          const coords = getCaretCoordinates(textareaRef.current, lastWordMatch.index);
+          setSuggestionCoords(coords);
+        }
+      } else {
+        setShowSuggestions(false);
+      }
+    } else {
+      setShowSuggestions(false);
+    }
+  };
+
+  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!showSuggestions || filteredTags.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveSuggestionIdx(prev => (prev + 1) % filteredTags.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveSuggestionIdx(prev => (prev - 1 + filteredTags.length) % filteredTags.length);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      insertTag(filteredTags[activeSuggestionIdx]);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setShowSuggestions(false);
+    }
+  };
+
+  const insertTag = (tag: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const text = textarea.value;
+    const start = triggerIndex;
+    const end = textarea.selectionStart;
+
+    const inserted = `#${tag} `;
+    const newBody = text.substring(0, start) + inserted + text.substring(end);
+
+    if (settings.hideYaml) {
+      handleBodyChange(newBody);
+    } else {
+      onUpdateNote(note.id, { content: newBody });
+    }
+
+    setShowSuggestions(false);
+
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = start + inserted.length;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 50);
+  };
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full bg-slate-50 dark:bg-zinc-950">
       
@@ -333,12 +429,15 @@ export default function Editor({
               ref={textareaRef}
               value={settings.hideYaml ? body : note.content}
               onChange={(e) => {
+                const val = e.target.value;
                 if (settings.hideYaml) {
-                  handleBodyChange(e.target.value);
+                  handleBodyChange(val);
                 } else {
-                  onUpdateNote(note.id, { content: e.target.value });
+                  onUpdateNote(note.id, { content: val });
                 }
+                handleTextareaChange(e);
               }}
+              onKeyDown={handleTextareaKeyDown}
               placeholder="Start writing... Type [[Other Note]] to create/link notes."
               className="flex-1 w-full bg-transparent border-none outline-none resize-none focus:ring-0 text-sm leading-relaxed overflow-y-auto text-slate-800 dark:text-zinc-200 placeholder-slate-300 dark:placeholder-zinc-700"
               style={{ fontFamily: 'var(--font-editor, inherit)' }}
@@ -488,6 +587,69 @@ export default function Editor({
         templates={templates}
         onSelectTemplate={(content) => insertMarkdown(content)}
       />
+
+      {showSuggestions && filteredTags.length > 0 && (
+        <div 
+          style={{ 
+            top: `${suggestionCoords.top + 20}px`, 
+            left: `${suggestionCoords.left}px` 
+          }}
+          className="fixed z-50 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg shadow-xl max-h-40 overflow-y-auto w-44 p-1 flex flex-col gap-0.5"
+        >
+          {filteredTags.map((tag, idx) => (
+             <button
+               key={tag}
+               onClick={() => insertTag(tag)}
+               className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors cursor-pointer ${
+                 idx === activeSuggestionIdx 
+                   ? "bg-indigo-600 text-white font-medium" 
+                   : "text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800"
+               }`}
+             >
+               #{tag}
+             </button>
+          ))}
+        </div>
+      )}
     </div>
   );
+}
+
+// Projection helper to calculate text caret screen position
+function getCaretCoordinates(element: HTMLTextAreaElement, position: number) {
+  const div = document.createElement("div");
+  const style = window.getComputedStyle(element);
+  
+  const properties = [
+    "fontFamily", "fontSize", "fontWeight", "fontStyle", "fontVariant",
+    "lineHeight", "letterSpacing", "textAlign", "textTransform", "textIndent",
+    "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+    "borderWidth", "borderStyle", "boxSizing", "width"
+  ];
+  
+  properties.forEach(prop => {
+    div.style[prop as any] = style[prop as any];
+  });
+  
+  div.style.position = "absolute";
+  div.style.visibility = "hidden";
+  div.style.whiteSpace = "pre-wrap";
+  div.style.wordWrap = "break-word";
+  
+  const text = element.value.substring(0, position);
+  div.textContent = text;
+  
+  const span = document.createElement("span");
+  span.textContent = element.value.substring(position, position + 1) || ".";
+  div.appendChild(span);
+  
+  document.body.appendChild(div);
+  const { offsetTop, offsetLeft } = span;
+  const rect = element.getBoundingClientRect();
+  document.body.removeChild(div);
+  
+  return {
+    top: rect.top + offsetTop - element.scrollTop,
+    left: rect.left + offsetLeft - element.scrollLeft
+  };
 }

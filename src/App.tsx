@@ -95,7 +95,7 @@ export default function App() {
     }
     return [];
   });
-  const [sidebarInitialTab, setSidebarInitialTab] = useState<"links" | "tags" | "context" | "focus">("links");
+  const [sidebarInitialTab, setSidebarInitialTab] = useState<"links" | "tags" | "context" | "focus" | "graph">("links");
 
   useEffect(() => {
     localStorage.setItem("lite_obsidian_focus_queue", JSON.stringify(focusQueue));
