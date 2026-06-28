@@ -141,6 +141,58 @@ export function parseYamlMetadata(yamlText: string): Record<string, string | str
 }
 
 /**
+ * Safely updates simple metadata keys in raw markdown YAML frontmatter,
+ * leaving arrays/lists like cards: or other lines verbatim.
+ */
+export function updateYamlMetadata(content: string, updates: Record<string, any>): string {
+  const { frontmatter, body } = splitFrontmatter(content);
+  if (!frontmatter) {
+    const fmLines = ["---"];
+    Object.entries(updates).forEach(([k, v]) => {
+      if (v !== undefined && v !== null) {
+        fmLines.push(`${k}: ${v}`);
+      }
+    });
+    fmLines.push("---");
+    return fmLines.join("\n") + "\n" + body;
+  }
+
+  const cleanYaml = frontmatter.replace(/^---\r?\n/, "").replace(/\r?\n---(?:\r?\n|$)/, "");
+  const lines = cleanYaml.split(/\r?\n/);
+  const newLines: string[] = [];
+  const keysToUpdate = { ...updates };
+
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const colonIndex = line.indexOf(':');
+    if (colonIndex > -1) {
+      const key = line.substring(0, colonIndex).trim();
+      if (key in keysToUpdate) {
+        const val = keysToUpdate[key];
+        if (val !== undefined && val !== null) {
+          newLines.push(`${key}: ${val}`);
+        }
+        delete keysToUpdate[key];
+        i++;
+        continue;
+      }
+    }
+    newLines.push(line);
+    i++;
+  }
+
+  // Append remaining new keys
+  Object.entries(keysToUpdate).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) {
+      newLines.push(`${k}: ${v}`);
+    }
+  });
+
+  return `---\n${newLines.join("\n")}\n---\n${body}`;
+}
+
+/**
  * Generates a fully self-contained HTML file which includes the Obsidian Lite editor,
  * beautiful styling via Tailwind CSS CDN, Lucide Icons, interactive Canvas Graph View,
  * and pre-packaged notes, with the ability to function as a Windows .hta application.

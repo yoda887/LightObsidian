@@ -538,6 +538,51 @@ export default function App() {
     }
   };
 
+  const handleExtractNote = async (parentNoteId: string, extractText: string) => {
+    const parentNote = notes.find(n => n.id === parentNoteId);
+    if (!parentNote) return null;
+    
+    const cleanText = extractText.replace(/[#*`[\]{}]/g, "").trim();
+    let excerpt = cleanText.substring(0, 30).trim();
+    if (!excerpt) excerpt = "Extract";
+    
+    let index = 1;
+    let title = `Extract: ${excerpt}`;
+    while (notes.some(n => n.title.toLowerCase() === title.toLowerCase())) {
+      index++;
+      title = `Extract: ${excerpt} (${index})`;
+    }
+    
+    const filename = `${title}.md`;
+    const todayStr = new Date().toISOString().split("T")[0];
+    const newNoteContent = `---\nir_next_read: "${todayStr}"\nir_interval: 1\nir_ease: 2.5\nir_priority: 60\nir_last_offset: 0\n---\n# ${title}\n\nSource: [[${parentNote.title}]]\n\n${extractText}`;
+    
+    const newNote: Note = {
+      id: parentNote.path ? `${parentNote.path}/${filename}` : filename,
+      title: title,
+      content: newNoteContent,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      path: parentNote.path
+    };
+    
+    const updatedNotes = [...notes, newNote];
+    setNotes(updatedNotes);
+    putNote(newNote).catch(console.error);
+    
+    if (vaultHandle) {
+      try {
+        const fileHandle = await vaultHandle.getFileHandle(filename, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(newNote.content);
+        await writable.close();
+      } catch (err) {
+        console.error("Failed to create extract in vault", err);
+      }
+    }
+    return newNote;
+  };
+
   // Export current list of notes as a single HTA/HTML file
   const handleExportHtml = () => {
     const singleHtmlContent = generateSingleHtmlApp(notes);
@@ -831,6 +876,7 @@ export default function App() {
                 onUpdateNote={handleUpdateNote}
                 onSelectNote={handleSelectNote}
                 onWikilinkClick={handleWikilinkClick}
+                onExtractNote={handleExtractNote}
               />
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center space-y-4 p-8 text-center bg-slate-50 dark:bg-zinc-950">
@@ -868,6 +914,7 @@ export default function App() {
             initialTab={sidebarInitialTab}
             onClose={() => setIsRightSidebarOpen(false)}
             onSelectNote={handleSelectNote}
+            onUpdateNote={handleUpdateNote}
           />
         )}
       </div>

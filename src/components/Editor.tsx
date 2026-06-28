@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { Note } from "../types";
-import { parseMarkdownToHtml, splitFrontmatter, parseYamlMetadata } from "../utils";
+import { parseMarkdownToHtml, splitFrontmatter, parseYamlMetadata, updateYamlMetadata } from "../utils";
 import { insertFlashcardTemplate } from "../flashcards";
 import { CustomWYSIWYG, CustomWYSIWYGRef } from "./CustomWYSIWYG";
 import TemplateModal from "./TemplateModal";
@@ -29,6 +29,7 @@ import {
   Frame,
   Brain,
   Settings,
+  BookOpen,
 } from "lucide-react";
 
 interface EditorProps {
@@ -40,6 +41,7 @@ interface EditorProps {
   onSelectNote: (id: string) => void;
   onWikilinkClick: (title: string) => void;
   isZenMode?: boolean;
+  onExtractNote?: (parentNoteId: string, extractText: string) => Promise<Note | null>;
 }
 
 export default function Editor({
@@ -51,6 +53,7 @@ export default function Editor({
   onSelectNote,
   onWikilinkClick,
   isZenMode,
+  onExtractNote,
 }: EditorProps) {
   const [htmlContent, setHtmlContent] = useState("");
   const [localTitle, setLocalTitle] = useState(note.title);
@@ -78,6 +81,138 @@ export default function Editor({
       onUpdateNote(note.id, { title: localTitle });
     }
   };
+
+  const irMetadata = useMemo(() => {
+    const { frontmatter } = splitFrontmatter(note.content);
+    if (!frontmatter) return null;
+    const metadata = parseYamlMetadata(frontmatter);
+    if (metadata.ir_next_read) {
+      return {
+        nextRead: String(metadata.ir_next_read),
+        interval: parseInt(String(metadata.ir_interval)) || 1,
+        ease: parseFloat(String(metadata.ir_ease)) || 2.5,
+        priority: parseInt(String(metadata.ir_priority)) || 50,
+        lastOffset: parseInt(String(metadata.ir_last_offset)) || 0
+      };
+    }
+    return null;
+  }, [note.content]);
+
+  const handleScheduleReading = (grade: "hard" | "good" | "easy" | "done") => {
+    if (!irMetadata) return;
+    
+    if (grade === "done") {
+      const newContent = updateYamlMetadata(note.content, {
+        ir_next_read: null,
+        ir_interval: null,
+        ir_ease: null,
+        ir_priority: null,
+        ir_last_offset: null
+      });
+      onUpdateNote(note.id, { content: newContent });
+      return;
+    }
+    
+    let newInterval = 1;
+    let newEase = irMetadata.ease;
+    
+    if (grade === "hard") {
+      newInterval = 1;
+      newEase = Math.max(1.3, irMetadata.ease - 0.2);
+    } else if (grade === "good") {
+      newInterval = Math.max(2, Math.round(irMetadata.interval * irMetadata.ease));
+    } else if (grade === "easy") {
+      newInterval = Math.max(3, Math.round(irMetadata.interval * irMetadata.ease * 1.5));
+      newEase = irMetadata.ease + 0.15;
+    }
+    
+    const nextDate = new Date();
+    nextDate.setDate(nextDate.getDate() + newInterval);
+    const nextReadStr = nextDate.toISOString().split("T")[0];
+    
+    const newContent = updateYamlMetadata(note.content, {
+      ir_next_read: nextReadStr,
+      ir_interval: newInterval,
+      ir_ease: newEase
+    });
+    
+    onUpdateNote(note.id, { content: newContent });
+  };
+
+  const handleExtractSelection = async () => {
+    if (!selectedText || !onExtractNote) return;
+    const newNote = await onExtractNote(note.id, selectedText);
+    if (!newNote) return;
+    
+    const linkStr = `![[${newNote.title}]]`;
+    
+    if (mode === "dynamic" && wysiwygRef.current) {
+      wysiwygRef.current.replaceSelection(linkStr);
+    } else if (textareaRef.current) {
+      const start = textareaRef.current.selectionStart;
+      const end = textareaRef.current.selectionEnd;
+      const val = textareaRef.current.value;
+      const newVal = val.substring(0, start) + linkStr + val.substring(end);
+      
+      if (settings.hideYaml) {
+        handleBodyChange(newVal);
+      } else {
+        onUpdateNote(note.id, { content: newVal });
+      }
+      
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          textareaRef.current.selectionStart = start + linkStr.length;
+          textareaRef.current.selectionEnd = start + linkStr.length;
+        }
+      }, 50);
+    }
+    
+    window.getSelection()?.removeAllRanges();
+    setSelectionCoords(null);
+    setSelectedText("");
+  };
+
+  const lastOffsetRef = useRef(0);
+
+  const handleEditorCaretChange = () => {
+    if (!irMetadata) return;
+    let offset = 0;
+    if (mode === "dynamic" && wysiwygRef.current) {
+      offset = wysiwygRef.current.getCaretOffset();
+    } else if (textareaRef.current) {
+      offset = textareaRef.current.selectionStart;
+    }
+    lastOffsetRef.current = offset;
+  };
+
+  useEffect(() => {
+    lastOffsetRef.current = irMetadata ? irMetadata.lastOffset : 0;
+    
+    let timer: NodeJS.Timeout;
+    if (irMetadata && irMetadata.lastOffset > 0) {
+      timer = setTimeout(() => {
+        if (mode === "dynamic" && wysiwygRef.current) {
+          wysiwygRef.current.setCaretOffset(irMetadata.lastOffset);
+        } else if (textareaRef.current) {
+          textareaRef.current.focus();
+          textareaRef.current.selectionStart = irMetadata.lastOffset;
+          textareaRef.current.selectionEnd = irMetadata.lastOffset;
+        }
+      }, 150);
+    }
+    
+    return () => {
+      if (timer) clearTimeout(timer);
+      if (lastOffsetRef.current > 0 && irMetadata) {
+        const newContent = updateYamlMetadata(note.content, {
+          ir_last_offset: lastOffsetRef.current
+        });
+        onUpdateNote(note.id, { content: newContent });
+      }
+    };
+  }, [note.id]);
 
   const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -527,6 +662,8 @@ export default function Editor({
                 handleTextareaChange(e);
               }}
               onKeyDown={handleTextareaKeyDown}
+              onKeyUp={handleEditorCaretChange}
+              onClick={handleEditorCaretChange}
               placeholder="Start writing... Type [[Other Note]] to create/link notes."
               className="flex-1 w-full bg-transparent border-none outline-none resize-none focus:ring-0 text-sm leading-relaxed overflow-y-auto text-slate-800 dark:text-zinc-200 placeholder-slate-300 dark:placeholder-zinc-700"
               style={{ fontFamily: 'var(--font-editor, inherit)' }}
@@ -651,7 +788,7 @@ export default function Editor({
             )}
 
             {/* Custom WYSIWYG Editor */}
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-hidden" onKeyUp={handleEditorCaretChange} onClick={handleEditorCaretChange}>
               <CustomWYSIWYG 
                 ref={wysiwygRef}
                 key={note.createdAt} 
@@ -714,13 +851,71 @@ export default function Editor({
           className="fixed z-50 animate-in fade-in slide-in-from-bottom-2 duration-150"
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <button
-            onClick={handleCreateCardFromSelection}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-lg font-medium text-xs border border-indigo-500 cursor-pointer transition-colors"
-          >
-            <Brain className="w-3.5 h-3.5" />
-            <span>Сделать карточкой</span>
-          </button>
+          <div className="flex gap-1 bg-indigo-600 border border-indigo-500 rounded-lg shadow-lg overflow-hidden p-1">
+            <button
+              onClick={handleCreateCardFromSelection}
+              className="flex items-center gap-1.5 px-2.5 py-1 hover:bg-indigo-700 text-white font-medium text-xs rounded cursor-pointer transition-colors"
+            >
+              <Brain className="w-3.5 h-3.5" />
+              <span>Сделать карточкой</span>
+            </button>
+            <div className="w-px h-4 bg-indigo-500/50 self-center" />
+            <button
+              onClick={handleExtractSelection}
+              className="flex items-center gap-1.5 px-2.5 py-1 hover:bg-indigo-700 text-white font-medium text-xs rounded cursor-pointer transition-colors"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>Экстракт</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {irMetadata && (
+        <div className="bg-slate-50 dark:bg-zinc-900 border-t border-slate-200 dark:border-zinc-800 p-3 px-6 flex items-center justify-between shrink-0 select-none">
+          <div className="flex items-center space-x-2">
+            <span className="p-1.5 bg-indigo-500 rounded text-white flex items-center justify-center">
+              <BookOpen className="w-4 h-4" />
+            </span>
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">Reading Session</div>
+              <div className="text-xs font-semibold text-slate-700 dark:text-zinc-300">
+                Interval: {irMetadata.interval}d | Ease: {irMetadata.ease.toFixed(1)}
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => handleScheduleReading("hard")}
+              className="px-3 py-1.5 bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-xs font-semibold rounded-md border border-red-200 dark:border-red-800/50 cursor-pointer transition-colors"
+              title="Read again soon (1 day)"
+            >
+              Soon (Hard)
+            </button>
+            <button
+              onClick={() => handleScheduleReading("good")}
+              className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 text-xs font-semibold rounded-md border border-indigo-200 dark:border-indigo-800/50 cursor-pointer transition-colors"
+              title={`Next reading in ${Math.max(2, Math.round(irMetadata.interval * irMetadata.ease))} days`}
+            >
+              Later (Good)
+            </button>
+            <button
+              onClick={() => handleScheduleReading("easy")}
+              className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 text-xs font-semibold rounded-md border border-emerald-200 dark:border-emerald-800/50 cursor-pointer transition-colors"
+              title={`Next reading in ${Math.max(3, Math.round(irMetadata.interval * irMetadata.ease * 1.5))} days`}
+            >
+              Easy
+            </button>
+            <div className="h-4 w-px bg-slate-200 dark:bg-zinc-800" />
+            <button
+              onClick={() => handleScheduleReading("done")}
+              className="px-3 py-1.5 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 text-xs font-semibold rounded-md cursor-pointer transition-colors"
+              title="Remove from Reading Queue"
+            >
+              Finish (Done)
+            </button>
+          </div>
         </div>
       )}
     </div>

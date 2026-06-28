@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
 import { Note } from "../types";
-import { Link, Hash, X, Sparkles, RotateCcw, Check, FileText, Network, BarChart2, Award } from "lucide-react";
+import { Link, Hash, X, Sparkles, RotateCcw, Check, FileText, Network, BarChart2, Award, BookOpen } from "lucide-react";
 import { Flashcard, extractFlashcards } from "../flashcards";
+import { splitFrontmatter, parseYamlMetadata, updateYamlMetadata } from "../utils";
 
 interface RightSidebarProps {
   currentNote?: Note;
@@ -11,9 +12,10 @@ interface RightSidebarProps {
   onClearReviewLog?: () => void;
   onRemoveFromQueue: (index: number) => void;
   onClearFocusQueue: () => void;
-  initialTab?: "links" | "tags" | "context" | "focus" | "graph" | "stats" | "skills";
+  initialTab?: "links" | "tags" | "context" | "focus" | "graph" | "stats" | "skills" | "reading";
   onClose: () => void;
   onSelectNote: (id: string) => void;
+  onUpdateNote?: (id: string, updates: Partial<Note>) => void;
 }
 
 export default function RightSidebar({ 
@@ -26,9 +28,10 @@ export default function RightSidebar({
   onClearFocusQueue,
   initialTab,
   onClose, 
-  onSelectNote 
+  onSelectNote,
+  onUpdateNote
 }: RightSidebarProps) {
-  const [activeTab, setActiveTab] = useState<"links" | "tags" | "context" | "focus" | "graph" | "stats" | "skills">(initialTab || "links");
+  const [activeTab, setActiveTab] = useState<"links" | "tags" | "context" | "focus" | "graph" | "stats" | "skills" | "reading">(initialTab || "links");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
 
@@ -288,6 +291,52 @@ export default function RightSidebar({
     })).sort((a, b) => b.xp - a.xp);
   }, [notes]);
 
+  const readingQueue = useMemo(() => {
+    const queue: { note: Note; nextRead: string; interval: number; ease: number; priority: number }[] = [];
+    const todayStr = new Date().toISOString().split("T")[0];
+    
+    notes.forEach(n => {
+      const { frontmatter } = splitFrontmatter(n.content);
+      if (frontmatter) {
+        const metadata = parseYamlMetadata(frontmatter);
+        if (metadata.ir_next_read) {
+          const nextReadVal = String(metadata.ir_next_read).trim();
+          if (nextReadVal <= todayStr) {
+            queue.push({
+              note: n,
+              nextRead: nextReadVal,
+              interval: parseInt(String(metadata.ir_interval)) || 1,
+              ease: parseFloat(String(metadata.ir_ease)) || 2.5,
+              priority: parseInt(String(metadata.ir_priority)) || 50
+            });
+          }
+        }
+      }
+    });
+    
+    return queue.sort((a, b) => b.priority - a.priority || a.nextRead.localeCompare(b.nextRead));
+  }, [notes]);
+
+  const isCurrentNoteInReadingList = useMemo(() => {
+    if (!currentNote) return false;
+    const { frontmatter } = splitFrontmatter(currentNote.content);
+    const metadata = parseYamlMetadata(frontmatter);
+    return !!metadata.ir_next_read;
+  }, [currentNote]);
+
+  const handleAddToReadingList = () => {
+    if (!currentNote || !onUpdateNote) return;
+    const todayStr = new Date().toISOString().split("T")[0];
+    const newContent = updateYamlMetadata(currentNote.content, {
+      ir_next_read: todayStr,
+      ir_interval: 1,
+      ir_ease: 2.5,
+      ir_priority: 50,
+      ir_last_offset: 0
+    });
+    onUpdateNote(currentNote.id, { content: newContent });
+  };
+
   const handleLinkClick = (title: string) => {
     // Find note by title
     const found = notes.find(n => n.title.toLowerCase() === title.toLowerCase());
@@ -398,6 +447,17 @@ export default function RightSidebar({
         >
           <Award className="w-4 h-4" />
         </button>
+        <button
+          onClick={() => setActiveTab("reading")}
+          className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
+            activeTab === "reading" 
+              ? "text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" 
+              : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent"
+          }`}
+          title="Reading Queue (Инкрементальное чтение)"
+        >
+          <BookOpen className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Content */}
@@ -491,6 +551,70 @@ export default function RightSidebar({
                       <span>{skill.xp} XP</span>
                       <span>Next: {skill.nextLevelBaseXP} XP</span>
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "reading" && (
+          <div className="space-y-4">
+            <h3 className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-2">
+              Reading Queue ({readingQueue.length})
+            </h3>
+            
+            {currentNote && onUpdateNote && (
+              <div className="mb-4">
+                {isCurrentNoteInReadingList ? (
+                  <div className="p-3 border border-indigo-100 dark:border-indigo-900/50 rounded-lg bg-indigo-50/30 dark:bg-indigo-950/10 text-center">
+                    <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400 flex items-center justify-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>Active in Reading Queue</span>
+                    </span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleAddToReadingList}
+                    className="w-full py-2 px-3 border border-indigo-500 hover:bg-indigo-500 hover:text-white text-indigo-500 dark:text-indigo-400 dark:border-indigo-500/50 dark:hover:bg-indigo-500 dark:hover:text-white rounded-lg text-xs font-semibold cursor-pointer transition-all flex items-center justify-center gap-2"
+                  >
+                    <BookOpen className="w-4 h-4" />
+                    <span>Add current note to Queue</span>
+                  </button>
+                )}
+              </div>
+            )}
+            
+            {readingQueue.length === 0 ? (
+              <div className="text-center py-8 text-slate-400 dark:text-zinc-500 text-xs">
+                No articles due for reading. Add notes to get started!
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {readingQueue.map((item, idx) => (
+                  <div key={idx} className="p-3 border border-slate-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900 shadow-sm flex flex-col gap-2">
+                    <div className="flex justify-between items-start gap-2">
+                      <button
+                        onClick={() => onSelectNote(item.note.id)}
+                        className="text-left font-semibold text-slate-800 dark:text-zinc-200 text-xs hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer truncate flex-1"
+                      >
+                        {item.note.title}
+                      </button>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 bg-slate-100 dark:bg-zinc-800 text-slate-500 rounded">
+                        P{item.priority}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[10px] text-slate-400">
+                      <span>Interval: {item.interval}d</span>
+                      <span>Ease: {item.ease.toFixed(1)}</span>
+                    </div>
+                    <button
+                      onClick={() => onSelectNote(item.note.id)}
+                      className="w-full mt-1 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 rounded-md text-xs font-semibold cursor-pointer transition-all text-center flex items-center justify-center gap-1.5"
+                    >
+                      <BookOpen className="w-3.5 h-3.5" />
+                      <span>Start Reading</span>
+                    </button>
                   </div>
                 ))}
               </div>

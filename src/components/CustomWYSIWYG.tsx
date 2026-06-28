@@ -3,6 +3,9 @@ import { Note } from '../types';
 
 export interface CustomWYSIWYGRef {
   insertMarkdown: (before: string, after?: string) => void;
+  getCaretOffset: () => number;
+  setCaretOffset: (offset: number) => void;
+  replaceSelection: (replacement: string) => void;
 }
 
 interface CustomWYSIWYGProps {
@@ -167,6 +170,44 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
         if (isZenMode) setActiveLineIndex(lineIdx);
         setTimeout(() => el.focus(), 0);
       }
+    },
+    getCaretOffset: () => getCaretOffset(),
+    setCaretOffset: (offset: number) => setCaretOffset(offset),
+    replaceSelection: (replacement: string) => {
+      const el = editorRef.current;
+      if (!el) return;
+      
+      const sel = window.getSelection();
+      let start = 0;
+      let end = 0;
+      const currentText = el.textContent || "";
+      
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        if (el.contains(range.commonAncestorContainer)) {
+          try {
+            const preSelectionRange = range.cloneRange();
+            preSelectionRange.selectNodeContents(el);
+            preSelectionRange.setEnd(range.startContainer, range.startOffset);
+            start = preSelectionRange.toString().length;
+            end = start + sel.toString().length;
+          } catch(e) {
+            start = currentText.length;
+            end = start;
+          }
+        }
+      }
+      
+      const newText = currentText.substring(0, start) + replacement + currentText.substring(end);
+      previousContent.current = newText;
+      onChange(newText);
+      
+      const tempCaret = start + replacement.length;
+      const textBefore = newText.substring(0, tempCaret);
+      const lineIdx = isZenMode ? textBefore.split('\n').length - 1 : -1;
+      el.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false);
+      setCaretOffset(tempCaret);
+      if (isZenMode) setActiveLineIndex(lineIdx);
     }
   }));
 
