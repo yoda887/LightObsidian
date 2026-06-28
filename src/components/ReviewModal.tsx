@@ -10,24 +10,28 @@ interface ReviewModalProps {
 }
 
 export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard }: ReviewModalProps) {
+  const [sessionCards, setSessionCards] = useState<Flashcard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
 
-  // Reset state when modal opens
+  // Reset state and snapshot due cards when modal opens
   useEffect(() => {
     if (isOpen) {
+      setSessionCards([...dueCards]);
       setCurrentIndex(0);
       setShowAnswer(false);
+    } else {
+      setSessionCards([]);
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleGrade = (grade: "hard" | "good" | "easy") => {
-    const card = dueCards[currentIndex];
+    const card = sessionCards[currentIndex];
     onReviewCard(card, grade);
     
-    if (currentIndex < dueCards.length - 1) {
+    if (currentIndex < sessionCards.length - 1) {
       setCurrentIndex(currentIndex + 1);
       setShowAnswer(false);
     } else {
@@ -36,8 +40,8 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard }:
     }
   };
 
-  const card = dueCards[currentIndex];
-  const isFinished = dueCards.length === 0 || currentIndex >= dueCards.length;
+  const card = sessionCards[currentIndex];
+  const isFinished = sessionCards.length === 0 || currentIndex >= sessionCards.length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -79,7 +83,7 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard }:
           ) : (
             <div className="w-full h-full flex flex-col">
               <div className="text-xs text-slate-400 dark:text-zinc-500 mb-6 text-center uppercase tracking-widest font-semibold">
-                Card {currentIndex + 1} of {dueCards.length}
+                Card {currentIndex + 1} of {sessionCards.length}
               </div>
               
               <div className="flex-1 flex flex-col justify-center">
