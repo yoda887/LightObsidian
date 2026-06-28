@@ -103,6 +103,21 @@ export default function App() {
     }
     return [];
   });
+  
+  const [isZenMode, setIsZenMode] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F11') {
+        e.preventDefault();
+        setIsZenMode(prev => !prev);
+      } else if (e.key === 'Escape' && isZenMode) {
+        setIsZenMode(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isZenMode]);
 
   useEffect(() => {
     localStorage.setItem("lite_obsidian_focus_queue", JSON.stringify(focusQueue));
@@ -510,11 +525,10 @@ export default function App() {
     handleSelectNote(random.id);
   };
 
-  // Handle clicking wikilinks inside formatted Preview
   const handleWikilinkClick = (noteTitle: string) => {
     const found = notes.find(n => n.title.trim().toLowerCase() === noteTitle.trim().toLowerCase());
     if (found) {
-      setCurrentNoteId(found.id);
+      handleSelectNote(found.id);
     } else {
       // Suggest creation of note with that title
       const userConfirmed = confirm(`Note "${noteTitle}" does not exist. Would you like to create it?`);
@@ -561,9 +575,10 @@ export default function App() {
   const charCount = currentNote ? (currentNote.content || "").length : 0;
 
   return (
-    <div className={`flex flex-col h-screen w-screen overflow-hidden bg-white dark:bg-zinc-950 text-slate-800 dark:text-zinc-200 transition-colors duration-200 ${typewriterMode ? 'typewriter-mode' : 'font-sans'}`}>
+    <div className={`flex flex-col h-screen w-screen overflow-hidden bg-white dark:bg-zinc-950 text-slate-800 dark:text-zinc-200 transition-colors duration-200 ${typewriterMode ? 'typewriter-mode' : 'font-sans'} ${isZenMode ? 'zen-mode' : ''}`}>
       
       {/* Top Application Bar */}
+      {!isZenMode && (
       <div className="relative h-10 shrink-0 flex items-center px-4 bg-slate-50 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 select-none">
         <div className="flex-1 flex items-center space-x-1">
           <button
@@ -706,9 +721,11 @@ export default function App() {
           </button>
         </div>
       </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden w-full h-full">
         {/* SIDEBAR */}
+        {!isZenMode && (
         <Sidebar
           notes={notes}
           folders={folders}
@@ -724,12 +741,13 @@ export default function App() {
           onOpenDailyNote={handleOpenDailyNote}
           onOpenRandomNote={handleOpenRandomNote}
         />
+        )}
 
         {/* WORKSPACE AREA */}
         <div className="flex-1 flex flex-col overflow-hidden h-full bg-white dark:bg-zinc-900">
           
           {/* TABS BAR */}
-          {openNoteIds.length > 0 && appMode !== "graph" && appMode !== "timeline" && (
+          {!isZenMode && openNoteIds.length > 0 && appMode !== "graph" && appMode !== "timeline" && (
             <div className="h-10 flex items-end bg-slate-50 dark:bg-zinc-900/50 border-b border-slate-200 dark:border-zinc-800 shrink-0 px-2">
               <div className="flex items-center self-center mr-3 space-x-1 shrink-0">
                 <button
@@ -809,6 +827,7 @@ export default function App() {
                 notes={notes}
                 mode={appMode}
                 settings={appSettings}
+                isZenMode={isZenMode}
                 onUpdateNote={handleUpdateNote}
                 onSelectNote={handleSelectNote}
                 onWikilinkClick={handleWikilinkClick}
@@ -837,7 +856,7 @@ export default function App() {
         </div>
 
         {/* RIGHT SIDEBAR */}
-        {isRightSidebarOpen && (
+        {!isZenMode && isRightSidebarOpen && (
           <RightSidebar
             currentNote={currentNote}
             notes={notes}
@@ -854,6 +873,7 @@ export default function App() {
       </div>
 
       {/* Status Bar */}
+      {!isZenMode && (
       <div className="h-6 shrink-0 bg-slate-100 dark:bg-zinc-900 border-t border-slate-200 dark:border-zinc-800 flex items-center justify-between px-3 text-[10px] text-slate-500 dark:text-zinc-400 font-medium select-none">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
@@ -868,6 +888,7 @@ export default function App() {
           <div className="text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider">Markdown</div>
         </div>
       </div>
+      )}
 
       <SettingsDialog
         isOpen={isSettingsOpen}

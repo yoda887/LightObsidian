@@ -10,6 +10,7 @@ interface CustomWYSIWYGProps {
   notes: Note[];
   onChange: (markdown: string) => void;
   onWikilinkClick: (title: string) => void;
+  isZenMode?: boolean;
 }
 
 interface AutocompleteState {
@@ -20,30 +21,32 @@ interface AutocompleteState {
   selectedIndex: number;
 }
 
-const highlightMarkdown = (text: string) => {
+const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode: boolean = false) => {
   // Escape HTML
   let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   // Split by newline to process line by line
   const lines = html.split('\n');
-  const highlightedLines = lines.map(line => {
+  const highlightedLines = lines.map((line, index) => {
+    const zenClass = isZenMode ? (index === activeLineIndex ? ' zen-active' : ' zen-inactive') : '';
+    
     // Headers
     const headerMatch = line.match(/^(#{1,6})\s+(.*)$/);
     if (headerMatch) {
       const level = headerMatch[1].length;
-      return `<span class="md-header md-h${level}"><span class="md-token">${headerMatch[1]} </span>${headerMatch[2]}</span>`;
+      return `<span class="md-line md-header md-h${level}${zenClass}"><span class="md-token">${headerMatch[1]} </span>${headerMatch[2]}</span>`;
     }
 
     // Blockquotes
     const quoteMatch = line.match(/^>\s+(.*)$/);
     if (quoteMatch) {
-      return `<span class="md-quote"><span class="md-token">&gt; </span>${quoteMatch[1]}</span>`;
+      return `<span class="md-line md-quote${zenClass}"><span class="md-token">&gt; </span>${quoteMatch[1]}</span>`;
     }
 
     // List items
     const listMatch = line.match(/^-\s+(.*)$/);
     if (listMatch) {
-      return `<span class="md-list"><span class="md-token">- </span>${listMatch[1]}</span>`;
+      return `<span class="md-line md-list${zenClass}"><span class="md-token">- </span>${listMatch[1]}</span>`;
     }
 
     // Inline formatting
@@ -71,7 +74,7 @@ const highlightMarkdown = (text: string) => {
     });
     processed = processed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-extlink cursor-pointer text-blue-600 dark:text-blue-400 hover:underline"><span class="md-token">[</span>$1<span class="md-token">](</span><span class="md-token opacity-50 text-xs">$2</span><span class="md-token">)</span></a>');
 
-    return `<span>${processed}</span>`;
+    return `<span class="md-line${zenClass}">${processed}</span>`;
   });
 
   // Rejoin with newline characters and append <br/> to fix the trailing newline visual bug in contentEditable
@@ -79,10 +82,11 @@ const highlightMarkdown = (text: string) => {
 };
 
 export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
-  ({ content, notes, onChange, onWikilinkClick }, ref) => {
+  ({ content, notes, onChange, onWikilinkClick, isZenMode }, ref) => {
     const editorRef = useRef<HTMLDivElement>(null);
     const isComposing = useRef(false);
     const previousContent = useRef(content);
+    const [activeLineIndex, setActiveLineIndex] = useState(-1);
   
   const [autocomplete, setAutocomplete] = useState<AutocompleteState>({
     active: false,
@@ -92,13 +96,26 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
     selectedIndex: 0,
   });
 
+  const prevIsZenMode = useRef(isZenMode);
+
   // Initialize content
   useEffect(() => {
-    if (editorRef.current && editorRef.current.textContent !== content) {
-      editorRef.current.innerHTML = highlightMarkdown(content);
-      previousContent.current = content;
+    if (editorRef.current) {
+      if (editorRef.current.textContent !== content || prevIsZenMode.current !== isZenMode) {
+        // Save caret if we are just toggling zen mode so we don't lose it
+        const caret = prevIsZenMode.current !== isZenMode ? getCaretOffset() : null;
+        
+        editorRef.current.innerHTML = highlightMarkdown(content, activeLineIndex, isZenMode);
+        previousContent.current = content;
+        prevIsZenMode.current = isZenMode;
+        
+        if (caret !== null) {
+          setCaretOffset(caret);
+          updateActiveLine(caret);
+        }
+      }
     }
-  }, [content]);
+  }, [content, isZenMode]);
 
   useImperativeHandle(ref, () => ({
     insertMarkdown: (before: string, after: string = "") => {
@@ -142,8 +159,12 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
       onChange(newText);
       
       if (el) {
-        el.innerHTML = highlightMarkdown(newText);
-        setCaretOffset(start + before.length + selectedText.length);
+        const tempCaret = start + before.length + selectedText.length;
+        const textBefore = newText.substring(0, tempCaret);
+        const lineIdx = isZenMode ? textBefore.split('\n').length - 1 : -1;
+        el.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false);
+        setCaretOffset(tempCaret);
+        if (isZenMode) setActiveLineIndex(lineIdx);
         setTimeout(() => el.focus(), 0);
       }
     }
@@ -223,10 +244,13 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
       onChange(newText);
       
       // Update HTML to reflect new highlighting
-      editorRef.current.innerHTML = highlightMarkdown(newText);
+      const textBefore = newText.substring(0, caretOffset);
+      const lineIdx = isZenMode ? textBefore.split('\n').length - 1 : -1;
+      editorRef.current.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false);
       
       // Restore caret
       setCaretOffset(caretOffset);
+      if (isZenMode) setActiveLineIndex(lineIdx);
     }
 
     // Autocomplete Logic
@@ -241,9 +265,38 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
         y: coords.y > 0 ? coords.y : prev.y + 20, // rough guess if x=0
         selectedIndex: prev.active ? prev.selectedIndex : 0
       }));
-    } else {
       setAutocomplete(prev => ({ ...prev, active: false }));
     }
+
+    updateActiveLine(caretOffset);
+  };
+
+  const updateActiveLine = (offset?: number) => {
+    if (!isZenMode) return;
+    const caretOffset = offset !== undefined ? offset : getCaretOffset();
+    const newText = editorRef.current?.textContent || "";
+    const textBeforeCaret = newText.substring(0, caretOffset);
+    const lineIndex = textBeforeCaret.split('\n').length - 1;
+    
+    if (lineIndex !== activeLineIndex) {
+      setActiveLineIndex(lineIndex);
+      if (editorRef.current) {
+        const lines = editorRef.current.querySelectorAll(':scope > span.md-line');
+        lines.forEach((el, idx) => {
+          if (idx === lineIndex) {
+            el.classList.add('zen-active');
+            el.classList.remove('zen-inactive');
+          } else {
+            el.classList.remove('zen-active');
+            el.classList.add('zen-inactive');
+          }
+        });
+      }
+    }
+  };
+
+  const handleKeyUp = (e: React.KeyboardEvent) => {
+    updateActiveLine();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -330,8 +383,12 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
       onChange(newText);
       
       if (editorRef.current) {
-        editorRef.current.innerHTML = highlightMarkdown(newText);
-        setCaretOffset(caretOffset + 1);
+        const tempCaret = caretOffset + 1;
+        const textBefore = newText.substring(0, tempCaret);
+        const lineIdx = isZenMode ? textBefore.split('\n').length - 1 : -1;
+        editorRef.current.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false);
+        setCaretOffset(tempCaret);
+        if (isZenMode) setActiveLineIndex(lineIdx);
       }
     } else if (e.key === 'Tab') {
       e.preventDefault();
@@ -343,8 +400,12 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
       onChange(newText);
       
       if (editorRef.current) {
-        editorRef.current.innerHTML = highlightMarkdown(newText);
-        setCaretOffset(caretOffset + 2);
+        const tempCaret = caretOffset + 2;
+        const textBefore = newText.substring(0, tempCaret);
+        const lineIdx = isZenMode ? textBefore.split('\n').length - 1 : -1;
+        editorRef.current.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false);
+        setCaretOffset(tempCaret);
+        if (isZenMode) setActiveLineIndex(lineIdx);
       }
     }
   };
@@ -368,6 +429,8 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
       e.preventDefault();
       window.open(extLinkEl.href, '_blank', 'noopener,noreferrer');
     }
+    
+    updateActiveLine();
   };
 
   // Render Autocomplete Dropdown
@@ -412,10 +475,13 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
                 
                 previousContent.current = newText;
                 onChange(newText);
-                if (editorRef.current) {
-                  editorRef.current.innerHTML = highlightMarkdown(newText);
-                  setCaretOffset(newCaretOffset);
-                }
+                 if (editorRef.current) {
+                   const textBefore = newText.substring(0, newCaretOffset);
+                   const lineIdx = isZenMode ? textBefore.split('\n').length - 1 : -1;
+                   editorRef.current.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false);
+                   setCaretOffset(newCaretOffset);
+                   if (isZenMode) setActiveLineIndex(lineIdx);
+                 }
                 setAutocomplete(prev => ({ ...prev, active: false }));
               }
             }}
@@ -435,6 +501,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
         suppressContentEditableWarning
         onInput={handleInput}
         onKeyDown={handleKeyDown}
+        onKeyUp={handleKeyUp}
         onClick={handleClick}
         onCompositionStart={() => (isComposing.current = true)}
         onCompositionEnd={() => {

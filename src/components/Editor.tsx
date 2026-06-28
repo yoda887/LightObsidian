@@ -39,6 +39,7 @@ interface EditorProps {
   onUpdateNote: (id: string, updates: Partial<Note>) => void;
   onSelectNote: (id: string) => void;
   onWikilinkClick: (title: string) => void;
+  isZenMode?: boolean;
 }
 
 export default function Editor({
@@ -49,6 +50,7 @@ export default function Editor({
   onUpdateNote,
   onSelectNote,
   onWikilinkClick,
+  isZenMode,
 }: EditorProps) {
   const [htmlContent, setHtmlContent] = useState("");
   const [localTitle, setLocalTitle] = useState(note.title);
@@ -324,6 +326,7 @@ export default function Editor({
     <div className="flex-1 flex flex-col overflow-hidden h-full bg-slate-50 dark:bg-zinc-950">
       
       {/* Workspace Toolbar */}
+      {!isZenMode && (
       <div className="min-h-[40px] bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 px-4 flex items-center justify-between shrink-0 shadow-sm">
         
         {/* Editor controls / formatting helpers */}
@@ -460,9 +463,8 @@ export default function Editor({
             <span className="hidden sm:inline">Template</span>
           </button>
         </div>
-
-
       </div>
+      )}
 
       {/* Editor Content Canvas */}
       <div className="flex-1 flex overflow-hidden">
@@ -655,6 +657,7 @@ export default function Editor({
                 key={note.createdAt} 
                 content={settings.hideYaml ? body : note.content} 
                 notes={notes}
+                isZenMode={isZenMode}
                 onChange={(newContent) => {
                   if (settings.hideYaml) {
                     handleBodyChange(newContent);

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Note } from "../types";
-import { Link, Hash, X, Sparkles, RotateCcw, Check, FileText, Network, BarChart2 } from "lucide-react";
+import { Link, Hash, X, Sparkles, RotateCcw, Check, FileText, Network, BarChart2, Award } from "lucide-react";
 import { Flashcard, extractFlashcards } from "../flashcards";
 
 interface RightSidebarProps {
@@ -11,7 +11,7 @@ interface RightSidebarProps {
   onClearReviewLog?: () => void;
   onRemoveFromQueue: (index: number) => void;
   onClearFocusQueue: () => void;
-  initialTab?: "links" | "tags" | "context" | "focus" | "graph" | "stats";
+  initialTab?: "links" | "tags" | "context" | "focus" | "graph" | "stats" | "skills";
   onClose: () => void;
   onSelectNote: (id: string) => void;
 }
@@ -28,7 +28,7 @@ export default function RightSidebar({
   onClose, 
   onSelectNote 
 }: RightSidebarProps) {
-  const [activeTab, setActiveTab] = useState<"links" | "tags" | "context" | "focus" | "graph" | "stats">(initialTab || "links");
+  const [activeTab, setActiveTab] = useState<"links" | "tags" | "context" | "focus" | "graph" | "stats" | "skills">(initialTab || "links");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
 
@@ -240,6 +240,54 @@ export default function RightSidebar({
     };
   }, [notes, reviewLog]);
 
+  // ----------------------------------------------------
+  // SKILLS / XP CALCULATIONS
+  // ----------------------------------------------------
+  const skills = useMemo(() => {
+    const tagRegex = /(?<=^|\s)#([\p{L}\p{N}_\-]+)/gu;
+    const allCards = extractFlashcards(notes);
+    
+    const tagXP: Record<string, number> = {};
+    const noteTags: Record<string, string[]> = {};
+    
+    notes.forEach(n => {
+      const tags = new Set<string>();
+      let match;
+      while ((match = tagRegex.exec(n.content)) !== null) {
+        tags.add(match[1].toLowerCase().trim());
+      }
+      noteTags[n.id] = Array.from(tags);
+    });
+
+    allCards.forEach(c => {
+      const xp = Math.floor((c.interval || 0) * (c.ease || 2.5) * 10);
+      if (xp > 0) {
+        const tags = noteTags[c.noteId] || [];
+        tags.forEach(t => {
+          tagXP[t] = (tagXP[t] || 0) + xp;
+        });
+      }
+    });
+    
+    const calculateLevelInfo = (xp: number) => {
+      let level = 1;
+      while (xp >= Math.pow(level, 2) * 100) {
+        level++;
+      }
+      const currentLevelBaseXP = Math.pow(level - 1, 2) * 100;
+      const nextLevelBaseXP = Math.pow(level, 2) * 100;
+      const progressInLevel = xp - currentLevelBaseXP;
+      const requiredForNext = nextLevelBaseXP - currentLevelBaseXP;
+      const percentage = Math.min(100, Math.floor((progressInLevel / requiredForNext) * 100));
+      return { level, xp, percentage, currentLevelBaseXP, nextLevelBaseXP };
+    };
+
+    return Object.keys(tagXP).map(tag => ({
+      tag,
+      ...calculateLevelInfo(tagXP[tag])
+    })).sort((a, b) => b.xp - a.xp);
+  }, [notes]);
+
   const handleLinkClick = (title: string) => {
     // Find note by title
     const found = notes.find(n => n.title.toLowerCase() === title.toLowerCase());
@@ -339,6 +387,17 @@ export default function RightSidebar({
         >
           <BarChart2 className="w-4 h-4" />
         </button>
+        <button
+          onClick={() => setActiveTab("skills")}
+          className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
+            activeTab === "skills" 
+              ? "text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" 
+              : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent"
+          }`}
+          title="Skill Tree (Дерево навыков)"
+        >
+          <Award className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Content */}
@@ -392,6 +451,45 @@ export default function RightSidebar({
                         <Check className="w-3 h-3" />
                         <span>Resolve</span>
                       </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "skills" && (
+          <div className="space-y-4">
+            <h3 className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-2">
+              Skill Tree
+            </h3>
+            {skills.length === 0 ? (
+              <div className="text-center py-8 text-slate-400 dark:text-zinc-500 text-xs">
+                No skills discovered yet. Add tags and flashcards to level up!
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {skills.map((skill, idx) => (
+                  <div key={idx} className="p-3 border border-slate-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900 shadow-sm flex flex-col gap-2">
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-slate-800 dark:text-zinc-200 text-xs">#{skill.tag}</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full">
+                        Lvl {skill.level}
+                      </span>
+                    </div>
+                    
+                    {/* XP Progress Bar */}
+                    <div className="w-full bg-slate-100 dark:bg-zinc-800 rounded-full h-1.5 overflow-hidden flex items-center">
+                      <div 
+                        className="bg-indigo-500 h-1.5 rounded-full transition-all duration-500"
+                        style={{ width: `${skill.percentage}%` }}
+                      ></div>
+                    </div>
+                    
+                    <div className="flex justify-between text-[9px] text-slate-400 font-medium">
+                      <span>{skill.xp} XP</span>
+                      <span>Next: {skill.nextLevelBaseXP} XP</span>
                     </div>
                   </div>
                 ))}

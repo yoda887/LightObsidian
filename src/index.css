@@ -224,3 +224,7 @@
 .dark .custom-wysiwyg .md-wikilink {
   color: #818cf8;
 }
+
+.zen-mode .md-line { transition: opacity 0.3s ease; }
+.zen-mode .zen-inactive { opacity: 0.25; }
+.zen-mode .zen-active { opacity: 1; }
