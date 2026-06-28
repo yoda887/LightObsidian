@@ -23,6 +23,7 @@ import {
   Columns,
   Clock,
   ChevronRight,
+  ChevronDown,
   FileText,
   Tag,
   Frame,
@@ -55,6 +56,7 @@ export default function Editor({
   const wysiwygRef = useRef<CustomWYSIWYGRef | null>(null);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [isYamlCollapsed, setIsYamlCollapsed] = useState(settings.hideYaml ?? false);
+  const [showCardDropdown, setShowCardDropdown] = useState(false);
 
   // Sync collapsed state when setting changes
   useEffect(() => {
@@ -110,7 +112,11 @@ export default function Editor({
     const replacement = before + selectedText + after;
 
     const newContent = text.substring(0, start) + replacement + text.substring(end);
-    onUpdateNote(note.id, { content: newContent });
+    if (settings.hideYaml) {
+      handleBodyChange(newContent);
+    } else {
+      onUpdateNote(note.id, { content: newContent });
+    }
 
     // Reset cursor position
     setTimeout(() => {
@@ -267,6 +273,53 @@ export default function Editor({
     }, 50);
   };
 
+  // ----------------------------------------------------
+  // HIGHLIGHT TO CARD
+  // ----------------------------------------------------
+  const [selectedText, setSelectedText] = useState("");
+  const [selectionCoords, setSelectionCoords] = useState<{ top: number; left: number } | null>(null);
+
+  const handlePreviewMouseUp = () => {
+    const selection = window.getSelection();
+    if (!selection) return;
+    
+    const text = selection.toString().trim();
+    if (!text) {
+      setSelectionCoords(null);
+      setSelectedText("");
+      return;
+    }
+
+    try {
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      
+      setSelectionCoords({
+        top: rect.top - 40,
+        left: rect.left + rect.width / 2
+      });
+      setSelectedText(text);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handlePreviewMouseDown = () => {
+    setSelectionCoords(null);
+    setSelectedText("");
+  };
+
+  const handleCreateCardFromSelection = () => {
+    if (!selectedText) return;
+    const cardTemplate = `\n\n${selectedText} :: [Ответ]`;
+    const newContent = note.content + cardTemplate;
+    onUpdateNote(note.id, { content: newContent });
+    
+    window.getSelection()?.removeAllRanges();
+    setSelectionCoords(null);
+    setSelectedText("");
+  };
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full bg-slate-50 dark:bg-zinc-950">
       
@@ -354,14 +407,48 @@ export default function Editor({
             <Clock className="w-4 h-4" />
             <span className="hidden sm:inline">Time</span>
           </button>
-          <button
-            onClick={handleInsertFlashcard}
-            className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded text-indigo-600 dark:text-indigo-400 transition-colors cursor-pointer flex items-center space-x-1 font-mono text-xs font-semibold"
-            title="Insert Flashcard (Inline)"
-          >
-            <Brain className="w-4 h-4" />
-            <span className="hidden sm:inline">Card</span>
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowCardDropdown(!showCardDropdown)}
+              className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded text-indigo-600 dark:text-indigo-400 transition-colors cursor-pointer flex items-center space-x-1 font-mono text-xs font-semibold"
+              title="Flashcard Options"
+            >
+              <Brain className="w-4 h-4" />
+              <span className="hidden sm:inline">Card</span>
+              <ChevronDown className="w-3 h-3 text-indigo-400 dark:text-indigo-500" />
+            </button>
+            
+            {showCardDropdown && (
+              <>
+                <div 
+                  className="fixed inset-0 z-10" 
+                  onClick={() => setShowCardDropdown(false)} 
+                />
+                <div className="absolute right-0 mt-1 w-44 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg shadow-xl py-1 z-20 flex flex-col gap-0.5">
+                  <button
+                    onClick={() => {
+                      handleInsertFlashcard();
+                      setShowCardDropdown(false);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 font-medium flex items-center gap-2 cursor-pointer transition-colors"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Вопрос :: Ответ</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      insertMarkdown("{{", "}}");
+                      setShowCardDropdown(false);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 font-medium flex items-center gap-2 cursor-pointer transition-colors"
+                  >
+                    <Tag className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Пропуск {"{{...}}"}</span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
           
           <div className="h-4 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />
           <button
@@ -450,6 +537,8 @@ export default function Editor({
           <div 
             className="flex-1 flex flex-col p-4 sm:p-6 overflow-y-auto bg-slate-50 dark:bg-zinc-950/20"
             onClick={handlePreviewClick}
+            onMouseDown={handlePreviewMouseDown}
+            onMouseUp={handlePreviewMouseUp}
           >
             {/* Note Title Input */}
             <input
@@ -609,6 +698,26 @@ export default function Editor({
                #{tag}
              </button>
           ))}
+        </div>
+      )}
+
+      {selectionCoords && selectedText && (
+        <div 
+          style={{ 
+            top: `${selectionCoords.top}px`, 
+            left: `${selectionCoords.left}px`,
+            transform: 'translateX(-50%)'
+          }}
+          className="fixed z-50 animate-in fade-in slide-in-from-bottom-2 duration-150"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={handleCreateCardFromSelection}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-lg font-medium text-xs border border-indigo-500 cursor-pointer transition-colors"
+          >
+            <Brain className="w-3.5 h-3.5" />
+            <span>Сделать карточкой</span>
+          </button>
         </div>
       )}
     </div>

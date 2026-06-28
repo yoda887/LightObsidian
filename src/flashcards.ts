@@ -226,12 +226,12 @@ export function extractFlashcards(notes: Note[]): Flashcard[] {
     const yamlCards = extractYamlCards(note);
     cards.push(...yamlCards);
 
-    // 2. Extract traditional cards
-    const regex = new RegExp(CARD_REGEX.source, CARD_REGEX.flags);
-    let match;
     const fmMatch = note.content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     const fmLength = fmMatch ? fmMatch[0].length : 0;
 
+    // 2. Extract traditional cards
+    const regex = new RegExp(CARD_REGEX.source, CARD_REGEX.flags);
+    let match;
     while ((match = regex.exec(note.content)) !== null) {
       if (match.index < fmLength) {
         continue;
@@ -250,6 +250,46 @@ export function extractFlashcards(notes: Note[]): Flashcard[] {
         interval = parseFloat(match[4]);
         ease = parseFloat(match[5]);
       }
+
+      cards.push({
+        noteId: note.id,
+        noteTitle: note.title,
+        question,
+        answer,
+        fullMatch,
+        nextReview,
+        interval,
+        ease
+      });
+    }
+
+    // 3. Extract cloze deletions line-by-line
+    const lines = note.content.substring(fmLength).split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.includes("::")) continue;
+
+      const hasCloze = /\{\{[^{}]+\}\}/.test(line);
+      if (!hasCloze) continue;
+
+      let nextReview = 0;
+      let interval = 0;
+      let ease = 2.5;
+      let srLine = "";
+
+      if (i + 1 < lines.length && lines[i + 1].trim().startsWith("<!--SR:")) {
+        const srMatch = lines[i + 1].trim().match(/^<!--SR:([^,]+),([^,]+),([^>]+)-->$/);
+        if (srMatch) {
+          nextReview = new Date(srMatch[1]).getTime();
+          interval = parseFloat(srMatch[2]);
+          ease = parseFloat(srMatch[3]);
+          srLine = lines[i + 1];
+        }
+      }
+
+      const question = line.replace(/\{\{[^{}]+\}\}/g, "[...]");
+      const answer = line.replace(/\{\{([^{}]+)\}\}/g, "**$1**");
+      const fullMatch = srLine ? `${line}\n${srLine}` : line;
 
       cards.push({
         noteId: note.id,
@@ -317,7 +357,8 @@ export function updateFlashcardInContent(content: string, card: Flashcard, grade
     });
   } else {
     const nextDateStr = nextDate.toISOString().split('T')[0];
-    const newCardStr = `${card.question} :: ${card.answer}\n<!--SR:${nextDateStr},${newInterval},${newEase.toFixed(1)}-->`;
+    const originalLine = card.fullMatch.split("\n")[0];
+    const newCardStr = `${originalLine}\n<!--SR:${nextDateStr},${newInterval},${newEase.toFixed(1)}-->`;
     return content.replace(card.fullMatch, newCardStr);
   }
 }

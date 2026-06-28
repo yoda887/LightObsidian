@@ -1,15 +1,17 @@
 import { useState, useMemo, useEffect } from "react";
 import { Note } from "../types";
-import { Link, Hash, X, Sparkles, RotateCcw, Check, FileText, Network } from "lucide-react";
-import { Flashcard } from "../flashcards";
+import { Link, Hash, X, Sparkles, RotateCcw, Check, FileText, Network, BarChart2 } from "lucide-react";
+import { Flashcard, extractFlashcards } from "../flashcards";
 
 interface RightSidebarProps {
   currentNote?: Note;
   notes: Note[];
   focusQueue: Flashcard[];
+  reviewLog?: string[];
+  onClearReviewLog?: () => void;
   onRemoveFromQueue: (index: number) => void;
   onClearFocusQueue: () => void;
-  initialTab?: "links" | "tags" | "context" | "focus" | "graph";
+  initialTab?: "links" | "tags" | "context" | "focus" | "graph" | "stats";
   onClose: () => void;
   onSelectNote: (id: string) => void;
 }
@@ -18,13 +20,15 @@ export default function RightSidebar({
   currentNote, 
   notes, 
   focusQueue,
+  reviewLog = [],
+  onClearReviewLog,
   onRemoveFromQueue,
   onClearFocusQueue,
   initialTab,
   onClose, 
   onSelectNote 
 }: RightSidebarProps) {
-  const [activeTab, setActiveTab] = useState<"links" | "tags" | "context" | "focus" | "graph">(initialTab || "links");
+  const [activeTab, setActiveTab] = useState<"links" | "tags" | "context" | "focus" | "graph" | "stats">(initialTab || "links");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
 
@@ -152,6 +156,90 @@ export default function RightSidebar({
     return { nodes, links };
   }, [currentNote, notes, incomingLinks, outgoingLinks]);
 
+  // ----------------------------------------------------
+  // STUDY STATS CALCULATIONS
+  // ----------------------------------------------------
+  const stats = useMemo(() => {
+    const allCards = extractFlashcards(notes);
+    
+    let newCards = 0;
+    let learningCards = 0;
+    let matureCards = 0;
+
+    allCards.forEach(c => {
+      if (c.interval === 0) {
+        newCards++;
+      } else if (c.interval < 21) {
+        learningCards++;
+      } else {
+        matureCards++;
+      }
+    });
+
+    const datesSet = new Set(reviewLog || []);
+    const sortedDates = Array.from(datesSet).sort((a: any, b: any) => new Date(b).getTime() - new Date(a).getTime());
+    
+    let streak = 0;
+    if (sortedDates.length > 0) {
+      const todayStr = new Date().toISOString().split("T")[0];
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+      const latestReviewDate = sortedDates[0];
+      if (latestReviewDate === todayStr || latestReviewDate === yesterdayStr) {
+        let currentToCheck = new Date(latestReviewDate);
+        while (true) {
+          const checkStr = currentToCheck.toISOString().split("T")[0];
+          if (datesSet.has(checkStr)) {
+            streak++;
+            currentToCheck.setDate(currentToCheck.getDate() - 1);
+          } else {
+            break;
+          }
+        }
+      }
+    }
+
+    const heatmapGrid: { dateStr: string; count: number; dayOfWeek: number }[][] = [];
+    
+    const reviewCounts: Record<string, number> = {};
+    (reviewLog || []).forEach(date => {
+      reviewCounts[date] = (reviewCounts[date] || 0) + 1;
+    });
+
+    const today = new Date();
+    const currentDayOfWeek = today.getDay();
+    
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() - (11 * 7 + currentDayOfWeek));
+
+    for (let w = 0; w < 12; w++) {
+      const weekDays = [];
+      for (let d = 0; d < 7; d++) {
+        const currentDate = new Date(startDate);
+        currentDate.setDate(startDate.getDate() + w * 7 + d);
+        const dateStr = currentDate.toISOString().split("T")[0];
+        
+        weekDays.push({
+          dateStr,
+          count: reviewCounts[dateStr] || 0,
+          dayOfWeek: d
+        });
+      }
+      heatmapGrid.push(weekDays);
+    }
+
+    return {
+      totalCards: allCards.length,
+      newCards,
+      learningCards,
+      matureCards,
+      streak,
+      heatmapGrid
+    };
+  }, [notes, reviewLog]);
+
   const handleLinkClick = (title: string) => {
     // Find note by title
     const found = notes.find(n => n.title.toLowerCase() === title.toLowerCase());
@@ -240,6 +328,17 @@ export default function RightSidebar({
             )}
           </div>
         </button>
+        <button
+          onClick={() => setActiveTab("stats")}
+          className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
+            activeTab === "stats" 
+              ? "text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" 
+              : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent"
+          }`}
+          title="Study Statistics & Heatmap (Статистика)"
+        >
+          <BarChart2 className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Content */}
@@ -301,7 +400,136 @@ export default function RightSidebar({
           </div>
         )}
 
-        {activeTab !== "focus" && !currentNote && (
+        {activeTab === "stats" && (
+          <div className="space-y-5">
+            <div>
+              <h3 className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-2">
+                Study Progress
+              </h3>
+              <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 space-y-3 shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 pb-2">
+                  <span className="text-xs font-medium text-slate-500 dark:text-zinc-400">Current Streak</span>
+                  <span className="text-sm font-bold text-amber-500 flex items-center gap-1">
+                    🔥 {stats.streak} {stats.streak === 1 ? 'day' : 'days'}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-medium text-slate-500 dark:text-zinc-400">Total Cards</span>
+                  <span className="font-semibold text-slate-800 dark:text-zinc-200">{stats.totalCards}</span>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    <span>Distribution</span>
+                    <span>{stats.totalCards > 0 ? '100%' : '0%'}</span>
+                  </div>
+                  
+                  <div className="w-full h-2.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden flex">
+                    {stats.totalCards > 0 ? (
+                      <>
+                        <div 
+                          style={{ width: `${(stats.newCards / stats.totalCards) * 100}%` }}
+                          className="bg-indigo-500 h-full"
+                          title={`New: ${stats.newCards} cards`}
+                        />
+                        <div 
+                          style={{ width: `${(stats.learningCards / stats.totalCards) * 100}%` }}
+                          className="bg-amber-500 h-full"
+                          title={`Learning: ${stats.learningCards} cards`}
+                        />
+                        <div 
+                          style={{ width: `${(stats.matureCards / stats.totalCards) * 100}%` }}
+                          className="bg-emerald-500 h-full"
+                          title={`Mature: ${stats.matureCards} cards`}
+                        />
+                      </>
+                    ) : (
+                      <div className="w-full bg-slate-200 dark:bg-zinc-800 h-full" />
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1 pt-1 text-[10px]">
+                    <div className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded bg-indigo-500 shrink-0" />
+                      <span className="text-slate-500 dark:text-zinc-400 truncate">New ({stats.newCards})</span>
+                    </div>
+                    <div className="flex items-center gap-1 justify-center">
+                      <span className="w-2 h-2 rounded bg-amber-500 shrink-0" />
+                      <span className="text-slate-500 dark:text-zinc-400 truncate">Learn ({stats.learningCards})</span>
+                    </div>
+                    <div className="flex items-center gap-1 justify-end">
+                      <span className="w-2 h-2 rounded bg-emerald-500 shrink-0" />
+                      <span className="text-slate-500 dark:text-zinc-400 truncate">Mature ({stats.matureCards})</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-2">
+                Activity Heatmap
+              </h3>
+              <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 shadow-sm flex flex-col items-center">
+                <div className="w-full flex justify-between text-[8px] font-bold text-slate-400 dark:text-zinc-500 mb-2 uppercase">
+                  <span>12 Weeks Ago</span>
+                  <span>Today</span>
+                </div>
+                
+                <div className="grid grid-flow-col gap-1 select-none">
+                  {stats.heatmapGrid.map((week, wIdx) => (
+                    <div key={`week-${wIdx}`} className="grid grid-rows-7 gap-1">
+                      {week.map((day, dIdx) => {
+                        let colorClass = "bg-slate-100 dark:bg-zinc-800";
+                        if (day.count > 0 && day.count <= 2) {
+                          colorClass = "bg-indigo-200 dark:bg-indigo-950";
+                        } else if (day.count > 2 && day.count <= 6) {
+                          colorClass = "bg-indigo-400 dark:bg-indigo-800";
+                        } else if (day.count > 6) {
+                          colorClass = "bg-indigo-600 dark:bg-indigo-500";
+                        }
+                        return (
+                          <div
+                            key={`day-${dIdx}`}
+                            className={`w-3.5 h-3.5 rounded-sm transition-colors duration-150 ${colorClass}`}
+                            title={`${day.dateStr}: ${day.count} ${day.count === 1 ? 'review' : 'reviews'}`}
+                          />
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="w-full flex items-center justify-between mt-3 pt-2 border-t border-slate-100 dark:border-zinc-800 text-[9px] text-slate-400">
+                  <span>Less</span>
+                  <div className="flex gap-1 items-center">
+                    <div className="w-2.5 h-2.5 rounded-sm bg-slate-100 dark:bg-zinc-800" />
+                    <div className="w-2.5 h-2.5 rounded-sm bg-indigo-200 dark:bg-indigo-950" />
+                    <div className="w-2.5 h-2.5 rounded-sm bg-indigo-400 dark:bg-indigo-800" />
+                    <div className="w-2.5 h-2.5 rounded-sm bg-indigo-600 dark:bg-indigo-500" />
+                  </div>
+                  <span>More</span>
+                </div>
+
+                {onClearReviewLog && (reviewLog || []).length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (confirm("Are you sure you want to clear your study stats?")) {
+                        onClearReviewLog();
+                      }
+                    }}
+                    className="mt-4 text-[9px] text-slate-400 hover:text-red-500 font-semibold uppercase tracking-wider bg-transparent border-none cursor-pointer hover:underline"
+                  >
+                    Clear History
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab !== "focus" && activeTab !== "stats" && !currentNote && (
           <div className="text-xs text-center text-slate-400 italic mt-10">No note selected</div>
         )}
 

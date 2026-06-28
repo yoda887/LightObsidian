@@ -96,10 +96,21 @@ export default function App() {
     return [];
   });
   const [sidebarInitialTab, setSidebarInitialTab] = useState<"links" | "tags" | "context" | "focus" | "graph">("links");
+  const [reviewLog, setReviewLog] = useState<string[]>(() => {
+    const saved = localStorage.getItem("lite_obsidian_review_log");
+    if (saved) {
+      try { return JSON.parse(saved); } catch(e) { console.error(e); }
+    }
+    return [];
+  });
 
   useEffect(() => {
     localStorage.setItem("lite_obsidian_focus_queue", JSON.stringify(focusQueue));
   }, [focusQueue]);
+
+  useEffect(() => {
+    localStorage.setItem("lite_obsidian_review_log", JSON.stringify(reviewLog));
+  }, [reviewLog]);
 
   useEffect(() => {
     if (darkMode) {
@@ -538,6 +549,9 @@ export default function App() {
         return [...prev, card];
       });
     }
+
+    const todayStr = new Date().toISOString().split("T")[0];
+    setReviewLog(prev => [...prev, todayStr]);
   };
 
   const dueCards = getDueCards(notes);
@@ -828,6 +842,8 @@ export default function App() {
             currentNote={currentNote}
             notes={notes}
             focusQueue={focusQueue}
+            reviewLog={reviewLog}
+            onClearReviewLog={() => setReviewLog([])}
             onRemoveFromQueue={(index) => setFocusQueue(prev => prev.filter((_, idx) => idx !== index))}
             onClearFocusQueue={() => setFocusQueue([])}
             initialTab={sidebarInitialTab}
