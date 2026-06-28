@@ -40,6 +40,10 @@ export function extractWikilinks(content: string): ExtractedLink[] {
 export async function parseMarkdownToHtml(content: string, notes: Note[] = [], depth = 0): Promise<string> {
   if (depth > 3) return `<div class="p-2 border border-red-500 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded text-xs my-2">Error: Transclusion depth limit reached.</div>`;
 
+  // Strip YAML frontmatter before parsing markdown
+  const frontmatterRegex = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/;
+  content = content.replace(frontmatterRegex, "");
+
   // Handle transclusions: ![[Note Title]]
   const transclusions = Array.from(content.matchAll(/!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g));
   for (const match of transclusions) {
@@ -536,7 +540,9 @@ export function generateSingleHtmlApp(notes: Note[]): string {
       document.getElementById("preview-title").innerText = note.title || "Untitled Note";
 
       // HTML Render
-      let rawHtml = marked.parse(note.content || "", { breaks: true, gfm: true });
+      const frontmatterRegex = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/;
+      const cleanContent = (note.content || "").replace(frontmatterRegex, "");
+      let rawHtml = marked.parse(cleanContent, { breaks: true, gfm: true });
       
       // Parse [[Wikilinks]]
       const wikilinkRegex = /\\\\\\[\\\\\\[([^\\\\\\]|]+)(?:\\\\|[^\\\\\\]]+)?\\\\\\]\\\\\\]/g;

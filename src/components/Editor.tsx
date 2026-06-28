@@ -6,6 +6,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { Note } from "../types";
 import { parseMarkdownToHtml } from "../utils";
+import { insertFlashcardTemplate } from "../flashcards";
 import { CustomWYSIWYG, CustomWYSIWYGRef } from "./CustomWYSIWYG";
 import TemplateModal from "./TemplateModal";
 import {
@@ -24,6 +25,7 @@ import {
   FileText,
   Tag,
   Frame,
+  Brain,
 } from "lucide-react";
 
 interface EditorProps {
@@ -125,6 +127,23 @@ export default function Editor({
     }
   };
 
+  const insertTimestamp = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const timestamp = `${year}${month}${day}${hours}${minutes}${seconds}`;
+    insertMarkdown(timestamp, "");
+  };
+
+  const handleInsertFlashcard = () => {
+    const updatedContent = insertFlashcardTemplate(note.content);
+    onUpdateNote(note.id, { content: updatedContent });
+  };
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full bg-slate-50 dark:bg-zinc-950">
       
@@ -201,6 +220,24 @@ export default function Editor({
             title="Insert Tag"
           >
             <Tag className="w-4 h-4" />
+          </button>
+          
+          <div className="h-4 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />
+          <button
+            onClick={insertTimestamp}
+            className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded text-slate-600 dark:text-zinc-300 transition-colors cursor-pointer flex items-center space-x-1 font-mono text-xs font-semibold"
+            title="Insert Timestamp"
+          >
+            <Clock className="w-4 h-4" />
+            <span className="hidden sm:inline">Time</span>
+          </button>
+          <button
+            onClick={handleInsertFlashcard}
+            className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded text-indigo-600 dark:text-indigo-400 transition-colors cursor-pointer flex items-center space-x-1 font-mono text-xs font-semibold"
+            title="Insert Flashcard (YAML)"
+          >
+            <Brain className="w-4 h-4" />
+            <span className="hidden sm:inline">Card</span>
           </button>
           
           <div className="h-4 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />

@@ -18,7 +18,7 @@ export default function TimelineView({ notes, onSelectNote }: TimelineViewProps)
   }, [notes]);
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-zinc-950 p-4 sm:p-8">
+    <div className="w-full h-full overflow-y-auto bg-slate-50 dark:bg-zinc-950 p-4 sm:p-8">
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center space-x-3 mb-8">
           <Clock className="w-6 h-6 text-indigo-500" />
