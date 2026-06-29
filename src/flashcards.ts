@@ -366,7 +366,8 @@ export function extractFlashcards(notes: Note[]): Flashcard[] {
         fullMatch,
         nextReview,
         interval,
-        ease
+        ease,
+        type: "cloze"
       });
     }
   }

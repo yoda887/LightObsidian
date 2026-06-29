@@ -47,6 +47,20 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
   const card = sessionCards[currentIndex];
   const isFinished = sessionCards.length === 0 || currentIndex >= sessionCards.length;
 
+  const renderClozeAnswer = (answerText: string) => {
+    const parts = answerText.split(/\*\*(.*?)\*\*/g);
+    return parts.map((part, i) => {
+      if (i % 2 === 1) {
+        return (
+          <span key={i} className="text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1 rounded border-b-2 border-amber-500 font-bold mx-1">
+            {part}
+          </span>
+        );
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col h-[500px]">
@@ -105,7 +119,7 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
               
               <div className="flex-1 flex flex-col justify-center">
                 <div className="text-lg md:text-xl font-medium text-slate-800 dark:text-zinc-100 text-center leading-relaxed">
-                  {card.question}
+                  {card.type === "cloze" && showAnswer ? renderClozeAnswer(card.answer) : card.question}
                 </div>
 
                 {card.type === "mcq" ? (
@@ -149,7 +163,7 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
                       );
                     })}
                   </div>
-                ) : (
+                ) : card.type === "cloze" ? null : (
                   showAnswer && (
                     <>
                       <hr className="my-8 border-slate-200 dark:border-zinc-800 w-1/2 mx-auto" />
