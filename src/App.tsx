@@ -523,8 +523,10 @@ export default function App() {
     // Prevent duplicate titles on rename
     if (updates.title !== undefined) {
       const newTitle = updates.title.replace(/[<>:"/\\|?*]/g, '').trim();
-      updates.title = newTitle; // Ensure the sanitized title is what gets saved
-      if (newTitle) {
+      if (!newTitle) {
+        delete updates.title;
+      } else {
+        updates.title = newTitle; // Ensure the sanitized title is what gets saved
         const existing = notes.find(n => n.id !== id && n.title.trim().toLowerCase() === newTitle.toLowerCase());
         if (existing) {
           alert(`A note named "${newTitle}" already exists!`);

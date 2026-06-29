@@ -184,8 +184,13 @@ export default function Editor({
   }, [note.id, note.title]);
 
   const handleTitleBlur = () => {
-    if (localTitle.trim() !== note.title.trim()) {
-      onUpdateNote(note.id, { title: localTitle });
+    let finalTitle = localTitle.trim();
+    if (!finalTitle) {
+      finalTitle = note.title.trim() || "Untitled";
+      setLocalTitle(finalTitle);
+    }
+    if (finalTitle !== note.title.trim()) {
+      onUpdateNote(note.id, { title: finalTitle });
     }
   };
 
