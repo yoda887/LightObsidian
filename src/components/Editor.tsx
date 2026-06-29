@@ -30,6 +30,7 @@ import {
   Brain,
   Settings,
   BookOpen,
+  Sliders,
 } from "lucide-react";
 
 interface EditorProps {
@@ -677,6 +678,48 @@ export default function Editor({
             onMouseDown={handlePreviewMouseDown}
             onMouseUp={handlePreviewMouseUp}
           >
+            {/* Note Metadata Block (Obsidian Properties Style) */}
+            {frontmatter && Object.keys(parseYamlMetadata(frontmatter)).length > 0 && (
+              <div className="metadata-properties mb-6 pb-4 border-b border-slate-200 dark:border-zinc-800 shrink-0">
+                <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-3">
+                  <Sliders className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Properties</span>
+                </div>
+                <div className="divide-y divide-slate-100 dark:divide-zinc-800/40 border border-slate-200 dark:border-zinc-800 rounded-lg overflow-hidden bg-white/50 dark:bg-zinc-900/30 shadow-sm">
+                  {Object.entries(parseYamlMetadata(frontmatter)).map(([key, val]) => {
+                    let IconComponent = FileText;
+                    if (key === "tags" || key === "tag") IconComponent = Tag;
+                    else if (key === "aliases" || key === "alias") IconComponent = Link2;
+                    else if (key.includes("date") || key.includes("time") || key.includes("created") || key.includes("read")) IconComponent = Clock;
+                    
+                    return (
+                      <div key={key} className="flex items-center min-h-[36px] px-3 py-1.5 gap-4">
+                        <div className="w-32 flex items-center gap-2 text-xs font-medium text-slate-400 dark:text-zinc-500 shrink-0">
+                          <IconComponent className="w-3.5 h-3.5 text-slate-400/80" />
+                          <span className="truncate">{key}</span>
+                        </div>
+                        <div className="flex-1 text-xs text-slate-700 dark:text-zinc-300">
+                          {Array.isArray(val) ? (
+                            <div className="flex flex-wrap gap-1">
+                              {val.map(tag => (
+                                <span key={tag} className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100/50 dark:border-indigo-900/30 rounded-full text-[10px] font-medium text-indigo-600 dark:text-indigo-400">
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="font-sans">
+                              {String(val)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Note Title Input */}
             <input
               type="text"
@@ -687,49 +730,6 @@ export default function Editor({
               placeholder="Note Title"
               className="w-full bg-transparent text-2xl font-bold border-none outline-none focus:ring-0 mb-4 text-slate-900 dark:text-white placeholder-slate-300 dark:placeholder-zinc-700"
             />
-
-            {/* Note Metadata Block */}
-            {frontmatter && Object.keys(parseYamlMetadata(frontmatter)).length > 0 && (
-              <div className="mb-6 border border-slate-200 dark:border-zinc-800 rounded-lg overflow-hidden bg-white dark:bg-zinc-900 shadow-sm transition-all duration-200 shrink-0">
-                <div 
-                  onClick={() => setIsYamlCollapsed(!isYamlCollapsed)}
-                  className="flex items-center justify-between px-4 py-2 bg-slate-50 dark:bg-zinc-950 border-b border-slate-200 dark:border-zinc-800 cursor-pointer select-none text-xs font-semibold text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900/80 transition-colors"
-                >
-                  <span className="flex items-center gap-1.5">
-                    <Settings className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>Note Metadata ({Object.keys(parseYamlMetadata(frontmatter)).length} keys)</span>
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-slate-400">{isYamlCollapsed ? "Show" : "Hide"}</span>
-                    <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isYamlCollapsed ? "" : "rotate-90"}`} />
-                  </div>
-                </div>
-                {!isYamlCollapsed && (
-                  <div className="p-4 space-y-3 bg-white dark:bg-zinc-900">
-                    {Object.entries(parseYamlMetadata(frontmatter)).map(([key, val]) => (
-                      <div key={key} className="grid grid-cols-3 gap-2 text-xs border-b border-slate-100 dark:border-zinc-850 pb-2 last:border-0 last:pb-0">
-                        <span className="font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider text-[10px]">{key}</span>
-                        <span className="col-span-2 text-slate-800 dark:text-zinc-200">
-                          {Array.isArray(val) ? (
-                            <div className="flex flex-wrap gap-1">
-                              {val.map(tag => (
-                                <span key={tag} className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 rounded text-[10px] font-medium text-indigo-600 dark:text-indigo-400">
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="font-mono bg-slate-50 dark:bg-zinc-950 px-1 py-0.5 rounded border border-slate-100 dark:border-zinc-800 text-[11px]">
-                              {val}
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Markdown rendered output with custom event interceptor */}
             <div
