@@ -118,19 +118,26 @@ export default function Editor({
   const renderPropertyValue = (key: string, val: any) => {
     if (Array.isArray(val)) {
       const isTags = key === "tags" || key === "tag";
+      if (isTags) {
+        return (
+          <div className="flex flex-wrap gap-1">
+            {val.map((item, idx) => (
+              <span
+                key={idx}
+                className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100/30 dark:border-indigo-900/30"
+              >
+                #{item}
+              </span>
+            ))}
+          </div>
+        );
+      }
       return (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-col gap-0.5">
           {val.map((item, idx) => (
-            <span
-              key={idx}
-              className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                isTags
-                  ? "bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100/30 dark:border-indigo-900/30"
-                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-200/50 dark:border-zinc-700/50"
-              }`}
-            >
-              {isTags ? `#${item}` : renderStringWithLinks(String(item))}
-            </span>
+            <div key={idx} className="text-xs text-slate-700 dark:text-zinc-300">
+              {renderStringWithLinks(String(item))}
+            </div>
           ))}
         </div>
       );
