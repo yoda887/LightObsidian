@@ -180,6 +180,11 @@ export default function App() {
   };
 
   const openVault = async () => {
+    // @ts-ignore
+    if (!window.showDirectoryPicker) {
+      alert("Импорт локальной папки (Open Vault) требует безопасного соединения (HTTPS) или запуска на localhost. \n\nВы можете использовать приложение прямо в браузере (заметки автоматически сохраняются в локальную базу данных IndexedDB вашего браузера), либо настроить домен с SSL (HTTPS) на вашем сервере.");
+      return;
+    }
     try {
       // @ts-ignore
       const handle = await window.showDirectoryPicker();
