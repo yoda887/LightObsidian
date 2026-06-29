@@ -5,7 +5,7 @@
 
 import { useState } from "react";
 import { Note } from "../types";
-import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices } from "lucide-react";
+import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock } from "lucide-react";
 
 interface SidebarProps {
   notes: Note[];
@@ -31,7 +31,7 @@ interface TreeNode {
   note?: Note;
 }
 
-const buildFileTree = (notes: Note[], folders: string[] = [], searchQuery: string): TreeNode[] => {
+const buildFileTree = (notes: Note[], folders: string[] = [], searchQuery: string, sortOrder: string): TreeNode[] => {
   const root: TreeNode[] = [];
   const folderMap = new Map<string, TreeNode>();
 
@@ -95,6 +95,19 @@ const buildFileTree = (notes: Note[], folders: string[] = [], searchQuery: strin
   const sortTree = (nodes: TreeNode[]) => {
     nodes.sort((a, b) => {
       if (a.isFolder === b.isFolder) {
+        if (sortOrder === "name_asc") {
+          return a.name.localeCompare(b.name);
+        } else if (sortOrder === "name_desc") {
+          return b.name.localeCompare(a.name);
+        } else if (sortOrder === "created_desc") {
+          const aTime = a.note ? new Date(a.note.createdAt).getTime() : 0;
+          const bTime = b.note ? new Date(b.note.createdAt).getTime() : 0;
+          return bTime - aTime;
+        } else if (sortOrder === "modified_desc") {
+          const aTime = a.note ? new Date(a.note.updatedAt).getTime() : 0;
+          const bTime = b.note ? new Date(b.note.updatedAt).getTime() : 0;
+          return bTime - aTime;
+        }
         return a.name.localeCompare(b.name);
       }
       return a.isFolder ? -1 : 1;
@@ -205,8 +218,18 @@ export default function Sidebar({
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isSortOpen, setIsSortOpen] = useState(false);
+  const [sortOrder, setSortOrder] = useState<"name_asc" | "name_desc" | "created_desc" | "modified_desc">(
+    () => (localStorage.getItem("lite_obsidian_sort_order") as any) || "created_desc"
+  );
 
-  const treeRoot = buildFileTree(notes, folders, searchQuery);
+  const treeRoot = buildFileTree(notes, folders, searchQuery, sortOrder);
+
+  const handleSortChange = (newOrder: typeof sortOrder) => {
+    setSortOrder(newOrder);
+    localStorage.setItem("lite_obsidian_sort_order", newOrder);
+    setIsSortOpen(false);
+  };
 
   return (
     <aside className="w-64 bg-slate-50 dark:bg-zinc-950 border-r border-slate-200 dark:border-zinc-800 flex flex-col shrink-0 h-full">
@@ -229,7 +252,50 @@ export default function Sidebar({
             <Search className="w-4 h-4" />
           </button>
           
-          <div className="flex items-center space-x-0.5">
+          <div className="flex items-center space-x-0.5 relative">
+            <button
+              onClick={() => setIsSortOpen(!isSortOpen)}
+              className={`p-1.5 rounded transition-colors cursor-pointer ${
+                isSortOpen 
+                  ? "text-indigo-600 bg-indigo-50 dark:text-indigo-400 dark:bg-indigo-900/20" 
+                  : "text-slate-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 hover:bg-slate-200 dark:hover:bg-zinc-800"
+              }`}
+              title="Sort Notes"
+            >
+              {sortOrder === "name_asc" && <ArrowDownAZ className="w-4 h-4" />}
+              {sortOrder === "name_desc" && <ArrowDownZA className="w-4 h-4" />}
+              {(sortOrder === "created_desc" || sortOrder === "modified_desc") && <Clock className="w-4 h-4" />}
+            </button>
+            
+            {isSortOpen && (
+              <div className="absolute top-full left-0 mt-1 w-48 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-md shadow-lg z-50 py-1 text-sm">
+                <button
+                  onClick={() => handleSortChange("name_asc")}
+                  className={`w-full text-left px-3 py-1.5 flex items-center space-x-2 hover:bg-slate-100 dark:hover:bg-zinc-800 ${sortOrder === "name_asc" ? "text-indigo-600 dark:text-indigo-400" : "text-slate-700 dark:text-zinc-300"}`}
+                >
+                  <ArrowDownAZ className="w-4 h-4" /> <span>File name (A to Z)</span>
+                </button>
+                <button
+                  onClick={() => handleSortChange("name_desc")}
+                  className={`w-full text-left px-3 py-1.5 flex items-center space-x-2 hover:bg-slate-100 dark:hover:bg-zinc-800 ${sortOrder === "name_desc" ? "text-indigo-600 dark:text-indigo-400" : "text-slate-700 dark:text-zinc-300"}`}
+                >
+                  <ArrowDownZA className="w-4 h-4" /> <span>File name (Z to A)</span>
+                </button>
+                <button
+                  onClick={() => handleSortChange("created_desc")}
+                  className={`w-full text-left px-3 py-1.5 flex items-center space-x-2 hover:bg-slate-100 dark:hover:bg-zinc-800 ${sortOrder === "created_desc" ? "text-indigo-600 dark:text-indigo-400" : "text-slate-700 dark:text-zinc-300"}`}
+                >
+                  <Clock className="w-4 h-4" /> <span>Created time (new to old)</span>
+                </button>
+                <button
+                  onClick={() => handleSortChange("modified_desc")}
+                  className={`w-full text-left px-3 py-1.5 flex items-center space-x-2 hover:bg-slate-100 dark:hover:bg-zinc-800 ${sortOrder === "modified_desc" ? "text-indigo-600 dark:text-indigo-400" : "text-slate-700 dark:text-zinc-300"}`}
+                >
+                  <Clock className="w-4 h-4" /> <span>Modified time (new to old)</span>
+                </button>
+              </div>
+            )}
+
             <button
               onClick={() => onCreateNote()}
               className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded transition-colors cursor-pointer"
