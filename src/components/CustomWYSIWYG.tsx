@@ -70,12 +70,24 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
     processed = processed.replace(/\*(.*?)\*/g, '<span class="md-italic"><span class="md-token">*</span>$1<span class="md-token">*</span></span>');
     processed = processed.replace(/`(.*?)`/g, '<span class="md-code"><span class="md-token">`</span>$1<span class="md-token">`</span></span>');
     processed = processed.replace(/(!?)\[\[(.*?)\]\]/g, (match, excl, content) => {
-      const target = content.split('|')[0].trim();
+      let target = content.split('|')[0].trim();
+      let displayContent = content;
+      
+      if (!excl) {
+        const typeMatch = content.match(/^([^|:]+):/);
+        if (typeMatch) {
+          const type = typeMatch[1].trim();
+          target = target.slice(typeMatch[0].length).trim();
+          const rest = content.slice(typeMatch[0].length);
+          displayContent = `<span class="text-[9px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 px-1 py-0.5 rounded border border-rose-200 dark:border-rose-800/50 align-middle">${type}</span><span class="md-token">:</span>${rest}`;
+        }
+      }
+
       const safeTarget = target.replace(/"/g, '&quot;');
       if (excl === '!') {
         return `<span class="md-embed text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1 rounded border border-indigo-200 dark:border-indigo-800"><span class="md-token">![[</span>${content}<span class="md-token">]]</span></span>`;
       } else {
-        return `<span class="md-wikilink cursor-pointer hover:underline" data-note="${safeTarget}"><span class="md-token">[[</span>${content}<span class="md-token">]]</span></span>`;
+        return `<span class="md-wikilink cursor-pointer hover:underline" data-note="${safeTarget}"><span class="md-token">[[</span>${displayContent}<span class="md-token">]]</span></span>`;
       }
     });
     processed = processed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-extlink cursor-pointer text-blue-600 dark:text-blue-400 hover:underline"><span class="md-token">[</span>$1<span class="md-token">](</span><span class="md-token opacity-50 text-xs">$2</span><span class="md-token">)</span></a>');
