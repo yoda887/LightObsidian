@@ -123,25 +123,57 @@ export function parseYamlMetadata(yamlText: string): Record<string, string | str
   const metadata: Record<string, string | string[]> = {};
   const cleanYaml = yamlText.replace(/^---\r?\n/, "").replace(/\r?\n---(?:\r?\n|$)/, "");
   const lines = cleanYaml.split(/\r?\n/);
-  for (const line of lines) {
+  let currentKey: string | null = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
+
+    // Check if this is a continuation list item (starts with "- ")
+    if (/^\s+- /.test(line) && currentKey) {
+      const itemValue = trimmed.substring(2).trim().replace(/^["']|["']$/g, "");
+      const existing = metadata[currentKey];
+      if (Array.isArray(existing)) {
+        existing.push(itemValue);
+      } else {
+        metadata[currentKey] = [itemValue];
+      }
+      continue;
+    }
+
     const colonIndex = trimmed.indexOf(':');
     if (colonIndex > -1) {
       const key = trimmed.substring(0, colonIndex).trim();
       let value = trimmed.substring(colonIndex + 1).trim();
+
       if (value.startsWith('[') && value.endsWith(']')) {
+        // Inline array: tags: [study, dev]
         const arrayVals = value.substring(1, value.length - 1)
           .split(',')
           .map(v => v.trim().replace(/^["']|["']$/g, ""))
           .filter(Boolean);
         metadata[key] = arrayVals;
+        currentKey = key;
+      } else if (value === "") {
+        // Empty value — could be followed by indented list items
+        metadata[key] = "";
+        currentKey = key;
       } else {
         value = value.replace(/^["']|["']$/g, "");
         metadata[key] = value;
+        currentKey = key;
       }
     }
   }
+
+  // Clean up: convert empty strings that became arrays back
+  for (const key of Object.keys(metadata)) {
+    if (metadata[key] === "") {
+      // Check if next processing turned it into array — if still empty string, keep it
+    }
+  }
+
   return metadata;
 }
 
