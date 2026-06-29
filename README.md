@@ -18,3 +18,8 @@ View your app in AI Studio: https://ai.studio/apps/61bb0886-95dc-4ba1-a89b-fb265
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+## Deployment
+
+The application is hosted on Hetzner VPS: http://94.130.111.231:8080/
+Continuous Deployment is automated via GitHub Actions on every push to the `master` branch.
