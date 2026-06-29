@@ -9,10 +9,12 @@ export interface Flashcard {
   nextReview: number;     // Timestamp
   interval: number;       // In days
   ease: number;           // Multiplier
+  type?: "standard" | "cloze" | "mcq";
+  options?: string[];
 }
 
 // Regex to find traditional: Question :: Answer \n <!--SR:2024-01-01,1,2.5-->
-const CARD_REGEX = /^(.+?)\s*::\s*(.+?)(?:\n<!--SR:([^,]+),([^,]+),([^>]+)-->)?$/gm;
+const CARD_REGEX = /^(.+?)[ \t]*::[ \t]*(.+?)(?:\n<!--SR:([^,]+),([^,]+),([^>]+)-->)?$/gm;
 
 // Helper to parse YAML cards from note content
 export function extractYamlCards(note: Note): Flashcard[] {
@@ -229,10 +231,75 @@ export function extractFlashcards(notes: Note[]): Flashcard[] {
     const fmMatch = note.content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     const fmLength = fmMatch ? fmMatch[0].length : 0;
 
-    // 2. Extract traditional cards
+    let cleanContent = note.content;
+
+    // 2. Extract MCQ Test blocks (:::test ... :::) first
+    const testRegex = /^:::test\r?\n([\s\S]*?)\r?\n:::$/gm;
+    let testMatch;
+    while ((testMatch = testRegex.exec(note.content)) !== null) {
+      if (testMatch.index < fmLength) continue;
+
+      const fullMatch = testMatch[0];
+      const innerContent = testMatch[1];
+      const testLines = innerContent.split(/\r?\n/);
+      
+      const options: string[] = [];
+      let answer = "";
+      const questionLines: string[] = [];
+      
+      let nextReview = 0;
+      let interval = 0;
+      let ease = 2.5;
+
+      for (let i = 0; i < testLines.length; i++) {
+        const line = testLines[i];
+        const trimmed = line.trim();
+        
+        // Check for SR comment at the very end of the block
+        if (i === testLines.length - 1 && trimmed.startsWith("<!--SR:")) {
+          const srMatch = trimmed.match(/^<!--SR:([^,]+),([^,]+),([^>]+)-->$/);
+          if (srMatch) {
+            nextReview = new Date(srMatch[1]).getTime();
+            interval = parseFloat(srMatch[2]);
+            ease = parseFloat(srMatch[3]);
+          }
+          continue;
+        }
+
+        const optionMatch = trimmed.match(/^-\s+\[([ xX])\]\s+(.+)$/);
+        if (optionMatch) {
+          const isCorrect = optionMatch[1].toLowerCase() === "x";
+          const optionText = optionMatch[2];
+          options.push(optionText);
+          if (isCorrect) {
+            answer = optionText;
+          }
+        } else {
+          questionLines.push(line);
+        }
+      }
+
+      cards.push({
+        noteId: note.id,
+        noteTitle: note.title,
+        question: questionLines.join("\n").trim(),
+        answer,
+        fullMatch,
+        nextReview,
+        interval,
+        ease,
+        type: "mcq",
+        options
+      });
+
+      // Blank out matched block in cleanContent to prevent traditional/cloze parsing
+      cleanContent = cleanContent.replace(fullMatch, " ".repeat(fullMatch.length));
+    }
+
+    // 3. Extract traditional cards from cleanContent
     const regex = new RegExp(CARD_REGEX.source, CARD_REGEX.flags);
     let match;
-    while ((match = regex.exec(note.content)) !== null) {
+    while ((match = regex.exec(cleanContent)) !== null) {
       if (match.index < fmLength) {
         continue;
       }
@@ -263,8 +330,8 @@ export function extractFlashcards(notes: Note[]): Flashcard[] {
       });
     }
 
-    // 3. Extract cloze deletions line-by-line
-    const lines = note.content.substring(fmLength).split(/\r?\n/);
+    // 4. Extract cloze deletions line-by-line from cleanContent
+    const lines = cleanContent.substring(fmLength).split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (line.includes("::")) continue;
@@ -355,6 +422,17 @@ export function updateFlashcardInContent(content: string, card: Flashcard, grade
       interval: newInterval,
       ease: newEase
     });
+  } else if (card.type === "mcq") {
+    const nextDateStr = nextDate.toISOString().split('T')[0];
+    const srComment = `<!--SR:${nextDateStr},${newInterval},${newEase.toFixed(1)}-->`;
+    // Safely remove any existing SR comment right before the closing :::
+    let cleanMatch = card.fullMatch.replace(/\r?\n\s*<!--SR:[^>]+-->\s*\r?\n:::/, "\n:::");
+    // If the SR comment was added but there was no newline before it, the previous regex might miss it if it was \n<!--SR...-->\n:::
+    // Actually the above regex is good. Let's make sure it handles optional whitespaces.
+    
+    // Inject new SR comment right before the closing :::
+    const newCardStr = cleanMatch.replace(/\r?\n:::$/, `\n${srComment}\n:::`);
+    return content.replace(card.fullMatch, newCardStr);
   } else {
     const nextDateStr = nextDate.toISOString().split('T')[0];
     const originalLine = card.fullMatch.split("\n")[0];

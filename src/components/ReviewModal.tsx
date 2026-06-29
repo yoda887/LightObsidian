@@ -14,6 +14,7 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
   const [sessionCards, setSessionCards] = useState<Flashcard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
 
   // Reset state and snapshot due cards when modal opens
   useEffect(() => {
@@ -21,6 +22,7 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
       setSessionCards([...dueCards]);
       setCurrentIndex(0);
       setShowAnswer(false);
+      setSelectedOption(null);
     } else {
       setSessionCards([]);
     }
@@ -35,6 +37,7 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
     if (currentIndex < sessionCards.length - 1) {
       setCurrentIndex(currentIndex + 1);
       setShowAnswer(false);
+      setSelectedOption(null);
     } else {
       // Finished: trigger finished screen show
       setCurrentIndex(currentIndex + 1);
@@ -105,13 +108,56 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
                   {card.question}
                 </div>
 
-                {showAnswer && (
-                  <>
-                    <hr className="my-8 border-slate-200 dark:border-zinc-800 w-1/2 mx-auto" />
-                    <div className="text-base md:text-lg text-slate-600 dark:text-zinc-300 text-center leading-relaxed animate-in fade-in slide-in-from-bottom-4 duration-300">
-                      {card.answer}
-                    </div>
-                  </>
+                {card.type === "mcq" ? (
+                  <div className="mt-8 flex flex-col gap-3 w-full max-w-sm mx-auto animate-in fade-in duration-300">
+                    {card.options?.map((opt, i) => {
+                      const isSelected = selectedOption === opt;
+                      const isCorrect = opt === card.answer;
+                      let btnClass = "px-4 py-3 rounded-xl border text-left font-medium transition-all duration-200 shadow-sm ";
+                      
+                      if (!selectedOption) {
+                        btnClass += "border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-300 hover:border-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20";
+                      } else {
+                        if (isCorrect) {
+                          btnClass += "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400";
+                        } else if (isSelected && !isCorrect) {
+                          btnClass += "border-red-500 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400";
+                        } else {
+                          btnClass += "border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-slate-400 dark:text-zinc-600 opacity-50 cursor-not-allowed";
+                        }
+                      }
+                      
+                      return (
+                        <button
+                          key={i}
+                          disabled={!!selectedOption}
+                          onClick={() => setSelectedOption(opt)}
+                          className={btnClass}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
+                              selectedOption 
+                                ? (isCorrect ? 'border-emerald-500 bg-emerald-500 text-white' : isSelected ? 'border-red-500 bg-red-500 text-white' : 'border-slate-200 dark:border-zinc-700')
+                                : 'border-slate-300 dark:border-zinc-600'
+                            }`}>
+                              {selectedOption && isCorrect && <Check className="w-3.5 h-3.5" />}
+                              {selectedOption && isSelected && !isCorrect && <X className="w-3.5 h-3.5" />}
+                            </div>
+                            <span>{opt}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  showAnswer && (
+                    <>
+                      <hr className="my-8 border-slate-200 dark:border-zinc-800 w-1/2 mx-auto" />
+                      <div className="text-base md:text-lg text-slate-600 dark:text-zinc-300 text-center leading-relaxed animate-in fade-in slide-in-from-bottom-4 duration-300">
+                        {card.answer}
+                      </div>
+                    </>
+                  )
                 )}
               </div>
             </div>
@@ -120,16 +166,16 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
 
         {/* Footer / Controls */}
         {!isFinished && (
-          <div className="p-4 border-t border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 shrink-0">
-            {!showAnswer ? (
+          <div className="p-4 border-t border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 shrink-0 min-h-[72px]">
+            {card.type !== "mcq" && !showAnswer ? (
               <button
                 onClick={() => setShowAnswer(true)}
                 className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors shadow-sm"
               >
                 Show Answer
               </button>
-            ) : (
-              <div className="grid grid-cols-3 gap-2">
+            ) : (card.type !== "mcq" || selectedOption) ? (
+              <div className="grid grid-cols-3 gap-2 animate-in slide-in-from-bottom-2 fade-in duration-300">
                 <button
                   onClick={() => handleGrade("hard")}
                   className="flex flex-col items-center justify-center p-2 rounded-lg bg-red-50 hover:bg-red-100 dark:bg-red-900/10 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/30 transition-colors"
@@ -153,7 +199,7 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
                   <span className="text-xs font-bold uppercase">Easy</span>
                 </button>
               </div>
-            )}
+            ) : null}
           </div>
         )}
       </div>

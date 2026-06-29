@@ -125,18 +125,42 @@ export default function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
             </div>
           </section>
 
-          {/* Flashcards */}
+          {/* Flashcards & Tests */}
           <section>
             <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wider mb-3 flex items-center gap-2">
               <Brain className="w-4 h-4 text-slate-400" />
-              Flashcards & Spaced Repetition
+              Flashcards & Tests
             </h3>
-            <div className="text-sm text-slate-600 dark:text-zinc-400 space-y-2">
-              <p>Create flashcards directly in your notes using the double-colon syntax. They will be automatically scheduled for review based on how well you remember them.</p>
-              <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded border border-slate-200 dark:border-zinc-800">
-                <code className="text-sm font-mono text-indigo-600 dark:text-indigo-400">What is the capital of France? :: Paris</code>
+            <div className="text-sm text-slate-600 dark:text-zinc-400 space-y-4">
+              <div>
+                <strong className="text-slate-800 dark:text-zinc-200 block mb-1">1. Standard Flashcards (Вопрос-Ответ)</strong>
+                <p className="mb-2">Create standard question-answer pairs using the double-colon syntax.</p>
+                <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded border border-slate-200 dark:border-zinc-800">
+                  <code className="text-sm font-mono text-indigo-600 dark:text-indigo-400">What is the capital of France? :: Paris</code>
+                </div>
               </div>
-              <p className="text-xs text-slate-500">Click the Brain icon in the top right to start reviewing due cards.</p>
+
+              <div>
+                <strong className="text-slate-800 dark:text-zinc-200 block mb-1">2. Cloze Deletions (Заполнение пропусков)</strong>
+                <p className="mb-2">Hide specific words in a sentence by wrapping them in double curly braces. During review, you'll be asked to recall the hidden word.</p>
+                <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded border border-slate-200 dark:border-zinc-800">
+                  <code className="text-sm font-mono text-indigo-600 dark:text-indigo-400">The capital of France is {"{{Paris}}"}.</code>
+                </div>
+              </div>
+              
+              <div>
+                <strong className="text-slate-800 dark:text-zinc-200 block mb-1">3. Multiple Choice Tests (Тесты)</strong>
+                <p className="mb-2">Create interactive tests by wrapping a question and a checklist inside a <code className="text-xs font-mono text-indigo-600 dark:text-indigo-400">:::test</code> block. Mark the correct answer with an <code className="text-xs font-mono text-indigo-600 dark:text-indigo-400">[x]</code>.</p>
+                <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded border border-slate-200 dark:border-zinc-800">
+                  <code className="text-xs font-mono text-indigo-600 dark:text-indigo-400 block">:::test</code>
+                  <code className="text-xs font-mono text-indigo-600 dark:text-indigo-400 block">What is incremental reading?</code>
+                  <code className="text-xs font-mono text-indigo-600 dark:text-indigo-400 block">- [ ] Reading faster</code>
+                  <code className="text-xs font-mono text-indigo-600 dark:text-indigo-400 block">- [x] Spaced repetition for text</code>
+                  <code className="text-xs font-mono text-indigo-600 dark:text-indigo-400 block">:::</code>
+                </div>
+              </div>
+              
+              <p className="text-xs text-slate-500 mt-6">Click the Brain icon in the top right to start reviewing due cards and tests. They are automatically scheduled based on how well you remember them.</p>
             </div>
           </section>
 
@@ -182,7 +206,7 @@ export default function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
                     <li>Read a long note in 5-10 minute bursts.</li>
                     <li>Highlight key concepts and click <strong>Extract</strong> to split them off.</li>
                     <li>Reschedule the main note (Good or Easy) to clear your queue.</li>
-                    <li>Later, open the Extract note and add clozes (<code className="font-mono text-[10px]">{{cloze}}</code>) or flashcards (<code className="font-mono text-[10px]">Q :: A</code>) to commit it to active memory.</li>
+                    <li>Later, open the Extract note and add clozes (<code className="font-mono text-[10px]">{"{{cloze}}"}</code>) or flashcards (<code className="font-mono text-[10px]">Q :: A</code>) to commit it to active memory.</li>
                   </ol>
                 </div>
               </div>

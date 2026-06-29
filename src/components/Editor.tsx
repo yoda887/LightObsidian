@@ -571,6 +571,16 @@ export default function Editor({
                     <Tag className="w-3.5 h-3.5 text-indigo-500" />
                     <span>Пропуск {"{{...}}"}</span>
                   </button>
+                  <button
+                    onClick={() => {
+                      insertMarkdown("\n\n:::test\nВопрос\n- [ ] Неверно\n- [x] Верно\n:::\n\n");
+                      setShowCardDropdown(false);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 font-medium flex items-center gap-2 cursor-pointer transition-colors border-t border-slate-100 dark:border-zinc-800"
+                  >
+                    <Brain className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Тест (MCQ)</span>
+                  </button>
                 </div>
               </>
             )}
