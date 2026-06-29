@@ -91,8 +91,8 @@ export async function parseMarkdownToHtml(content: string, notes: Note[] = [], d
     return `${prefix}<span class="px-1.5 py-0.5 bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 rounded-md text-xs font-medium mx-0.5 inline-block">${tag}</span>`;
   });
 
-  // Replace [[type->Note Title]] or [[Note Title|Custom Label]]
-  const wikilinkRegex = /\[\[(?:([^\]|]+)->)?([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+  // Replace [[type-&gt;Note Title]] or [[Note Title|Custom Label]]
+  const wikilinkRegex = /\[\[(?:([^\]|]+)-&gt;)?([^\]|]+)(?:\|([^\]]+))?\]\]/g;
   return parsed.replace(wikilinkRegex, (_, typeMatch, target, label) => {
     const cleanTarget = target.trim();
     const displayLabel = label ? label.trim() : cleanTarget;
