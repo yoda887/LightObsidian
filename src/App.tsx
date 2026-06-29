@@ -146,7 +146,7 @@ export default function App() {
     return currentHandle;
   };
 
-  const getFilesRecursively = async (dirHandle: any, currentPath: string = ""): Promise<{notes: Note[], folders: string[]}> => {
+  const getFilesRecursively = async (dirHandle: any, currentPath: string = "", existingNotes: Note[] = []): Promise<{notes: Note[], folders: string[]}> => {
     let notesResult: Note[] = [];
     let foldersResult: string[] = [];
     
@@ -154,16 +154,23 @@ export default function App() {
       if (entry.kind === 'file' && entry.name.endsWith('.md')) {
         try {
           const file = await entry.getFile();
-          const content = await file.text();
           const statDate = new Date(file.lastModified).toISOString();
-          notesResult.push({
-            id: currentPath ? `${currentPath}/${entry.name}` : entry.name,
-            title: entry.name.replace('.md', ''),
-            content: content,
-            createdAt: statDate,
-            updatedAt: statDate,
-            path: currentPath
-          });
+          const id = currentPath ? `${currentPath}/${entry.name}` : entry.name;
+          
+          const existing = existingNotes.find(n => n.id === id);
+          if (existing && existing.updatedAt === statDate) {
+            notesResult.push(existing);
+          } else {
+            const content = await file.text();
+            notesResult.push({
+              id,
+              title: entry.name.replace('.md', ''),
+              content: content,
+              createdAt: statDate,
+              updatedAt: statDate,
+              path: currentPath
+            });
+          }
         } catch (e) {
           console.error("Error reading file", entry.name, e);
         }
@@ -171,7 +178,7 @@ export default function App() {
         if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
         const subPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
         foldersResult.push(subPath);
-        const subData = await getFilesRecursively(entry, subPath);
+        const subData = await getFilesRecursively(entry, subPath, existingNotes);
         notesResult.push(...subData.notes);
         foldersResult.push(...subData.folders);
       }
@@ -352,6 +359,49 @@ export default function App() {
     
     localStorage.setItem("lite_obsidian_settings", JSON.stringify(appSettings));
   }, [appSettings]);
+
+  // Keep a ref to the latest notes for the syncVault function
+  const notesRef = React.useRef(notes);
+  useEffect(() => {
+    notesRef.current = notes;
+  }, [notes]);
+
+  // Sync vault with external file system changes
+  useEffect(() => {
+    if (!vaultHandle) return;
+
+    let isSyncing = false;
+
+    const syncVault = async () => {
+      if (isSyncing || !vaultHandle) return;
+      isSyncing = true;
+      try {
+        // We pass the current notes in memory so we can skip re-reading files that haven't changed
+        const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(vaultHandle, "", notesRef.current);
+        
+        setFolders(loadedFolders);
+        setNotes(loadedNotes);
+
+        await clearNotes();
+        for (const n of loadedNotes) await putNote(n);
+      } catch (err) {
+        console.error("Failed to sync vault", err);
+      } finally {
+        isSyncing = false;
+      }
+    };
+
+    // Run sync when the browser window regains focus
+    window.addEventListener("focus", syncVault);
+
+    // Also run a background sync every 30 seconds
+    const intervalId = setInterval(syncVault, 30000);
+
+    return () => {
+      window.removeEventListener("focus", syncVault);
+      clearInterval(intervalId);
+    };
+  }, [vaultHandle]);
 
   // Toggle theme
   const handleToggleTheme = () => {
