@@ -165,6 +165,26 @@ export default function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
                   <strong className="text-slate-800 dark:text-zinc-200 block mb-0.5">4. Extracts</strong>
                   <span>Select any text and click **Extract** in the tooltip to split off a sub-article. It replaces the text with a transclusion link <code className="font-mono text-indigo-600 dark:text-indigo-400">![[Extract: ...]]</code> and schedules the extract as a new item.</span>
                 </div>
+                
+                <div className="pt-2 border-t border-slate-200 dark:border-zinc-800">
+                  <strong className="text-slate-800 dark:text-zinc-200 block mb-1 text-[11px] uppercase tracking-wider">How to Grade Readings</strong>
+                  <ul className="list-disc pl-4 space-y-1 text-slate-500 dark:text-zinc-400">
+                    <li><strong>Soon (Hard):</strong> Complex text, distracted reading, or urgent info. Schedules review for tomorrow.</li>
+                    <li><strong>Later (Good):</strong> Standard reading. You understand it and want to read the next chunk in due course.</li>
+                    <li><strong>Easy:</strong> Simple, already known, or low priority text. Pushes review far into the future.</li>
+                    <li><strong>Finish (Done):</strong> Read complete, fully processed, or converted to active recall cards. Removes from queue.</li>
+                  </ul>
+                </div>
+
+                <div className="pt-2 border-t border-slate-200 dark:border-zinc-800">
+                  <strong className="text-slate-800 dark:text-zinc-200 block mb-1 text-[11px] uppercase tracking-wider">Core Workflow Loop</strong>
+                  <ol className="list-decimal pl-4 space-y-1 text-slate-500 dark:text-zinc-400">
+                    <li>Read a long note in 5-10 minute bursts.</li>
+                    <li>Highlight key concepts and click <strong>Extract</strong> to split them off.</li>
+                    <li>Reschedule the main note (Good or Easy) to clear your queue.</li>
+                    <li>Later, open the Extract note and add clozes (<code className="font-mono text-[10px]">{{cloze}}</code>) or flashcards (<code className="font-mono text-[10px]">Q :: A</code>) to commit it to active memory.</li>
+                  </ol>
+                </div>
               </div>
             </div>
           </section>
