@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Brain, RotateCcw, Check, Zap, FileText } from "lucide-react";
+import { X, Brain, RotateCcw, Check, Zap, FileText, ChevronRight } from "lucide-react";
 import { Flashcard } from "../flashcards";
 
 interface ReviewModalProps {
@@ -167,14 +167,24 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
         {/* Footer / Controls */}
         {!isFinished && (
           <div className="p-4 border-t border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 shrink-0 min-h-[72px]">
-            {card.type !== "mcq" && !showAnswer ? (
+            {card.type === "mcq" ? (
+              selectedOption ? (
+                <button
+                  onClick={() => handleGrade(selectedOption === card.answer ? "good" : "hard")}
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors shadow-sm flex items-center justify-center gap-2 animate-in slide-in-from-bottom-2 fade-in duration-300"
+                >
+                  <span>Next</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              ) : null
+            ) : !showAnswer ? (
               <button
                 onClick={() => setShowAnswer(true)}
                 className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors shadow-sm"
               >
                 Show Answer
               </button>
-            ) : (card.type !== "mcq" || selectedOption) ? (
+            ) : (
               <div className="grid grid-cols-3 gap-2 animate-in slide-in-from-bottom-2 fade-in duration-300">
                 <button
                   onClick={() => handleGrade("hard")}
@@ -199,7 +209,7 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
                   <span className="text-xs font-bold uppercase">Easy</span>
                 </button>
               </div>
-            ) : null}
+            )}
           </div>
         )}
       </div>
