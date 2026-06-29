@@ -799,7 +799,6 @@ export default function Editor({
                   className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-3 cursor-pointer select-none hover:text-slate-600 dark:hover:text-zinc-300 transition-colors"
                 >
                   <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isYamlCollapsed ? "" : "rotate-90"}`} />
-                  <Sliders className="w-3.5 h-3.5 text-indigo-500" />
                   <span>Properties</span>
                   <span className="text-[9px] font-normal text-slate-300 dark:text-zinc-600 ml-1">({Object.keys(parseYamlMetadata(frontmatter)).length})</span>
                 </div>
@@ -815,7 +814,8 @@ export default function Editor({
                     
                     return (
                       <div key={key} className="flex items-center min-h-[32px] px-1 py-1 gap-2">
-                        <div className="w-20 flex items-center text-xs font-medium text-slate-400 dark:text-zinc-500 shrink-0">
+                        <div className="w-20 flex items-center gap-1.5 text-xs font-medium text-slate-400 dark:text-zinc-500 shrink-0">
+                          <IconComponent className="w-3.5 h-3.5 text-slate-400/80" />
                           <span className="truncate">{key}</span>
                         </div>
                         <div className="flex-1 text-xs text-slate-700 dark:text-zinc-300 flex items-center">
