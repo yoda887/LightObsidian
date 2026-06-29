@@ -118,7 +118,7 @@ export default function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
               <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded border border-slate-200 dark:border-zinc-800 space-y-1.5">
                 <div className="flex flex-col"><span className="text-xs text-slate-500 mb-0.5">Basic Link:</span><code className="text-sm font-mono text-indigo-600 dark:text-indigo-400">[[My Other Note]]</code></div>
                 <div className="flex flex-col"><span className="text-xs text-slate-500 mb-0.5">Link with Custom Alias:</span><code className="text-sm font-mono text-indigo-600 dark:text-indigo-400">[[Note Title|Click Here]]</code></div>
-                <div className="flex flex-col"><span className="text-xs text-slate-500 mb-0.5">Typed Link (creates a red badge):</span><code className="text-sm font-mono text-indigo-600 dark:text-indigo-400">[[Supports-&gt;Another Note]]</code></div>
+                <div className="flex flex-col"><span className="text-xs text-slate-500 mb-0.5">Typed Link (creates a red badge):</span><code className="text-sm font-mono text-indigo-600 dark:text-indigo-400">[[Supports:Another Note]]</code></div>
                 <div className="flex flex-col"><span className="text-xs text-slate-500 mb-0.5">Embed/Transclusion (displays the content of another note inside this one):</span><code className="text-sm font-mono text-indigo-600 dark:text-indigo-400">![[Note to Embed]]</code></div>
               </div>
               <p className="text-xs text-slate-500">If the linked note doesn't exist yet, clicking the link in Preview mode will prompt you to create it!</p>
