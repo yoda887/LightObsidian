@@ -780,6 +780,17 @@ export default function Editor({
             onMouseDown={handlePreviewMouseDown}
             onMouseUp={handlePreviewMouseUp}
           >
+            {/* Note Title Input */}
+            <input
+              type="text"
+              value={localTitle}
+              onChange={(e) => setLocalTitle(e.target.value)}
+              onBlur={handleTitleBlur}
+              onKeyDown={handleTitleKeyDown}
+              placeholder="Note Title"
+              className="w-full bg-transparent text-2xl font-bold border-none outline-none focus:ring-0 mb-4 text-slate-900 dark:text-white placeholder-slate-300 dark:placeholder-zinc-700"
+            />
+
             {/* Note Metadata Block (Obsidian Properties Style) */}
             {frontmatter && Object.keys(parseYamlMetadata(frontmatter)).length > 0 && (
               <div className="metadata-properties mb-6 pb-4 border-b border-slate-200 dark:border-zinc-800 shrink-0">
@@ -818,17 +829,6 @@ export default function Editor({
                 )}
               </div>
             )}
-
-            {/* Note Title Input */}
-            <input
-              type="text"
-              value={localTitle}
-              onChange={(e) => setLocalTitle(e.target.value)}
-              onBlur={handleTitleBlur}
-              onKeyDown={handleTitleKeyDown}
-              placeholder="Note Title"
-              className="w-full bg-transparent text-2xl font-bold border-none outline-none focus:ring-0 mb-4 text-slate-900 dark:text-white placeholder-slate-300 dark:placeholder-zinc-700"
-            />
 
             {/* Markdown rendered output with custom event interceptor */}
             <div
