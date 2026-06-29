@@ -409,7 +409,7 @@ export default function Editor({
   // TAG AUTOCOMPLETE ENGINE
   // ----------------------------------------------------
   const allUniqueTags = useMemo(() => {
-    const tagRegex = /(?<=^|\s)#([\p{L}\p{N}_\-]+)/gu;
+    const tagRegex = /(?<=^|\s)#([\p{L}\p{N}_\-\/]+)/gu;
     const tags = new Set<string>();
     notes.forEach(n => {
       let match;
@@ -431,7 +431,7 @@ export default function Editor({
     const pos = e.target.selectionStart;
 
     const textBeforeCursor = val.substring(0, pos);
-    const lastWordMatch = textBeforeCursor.match(/#[\p{L}\p{N}_\-]*$/u);
+    const lastWordMatch = textBeforeCursor.match(/#[\p{L}\p{N}_\-\/]*$/u);
 
     if (lastWordMatch && lastWordMatch.index !== undefined) {
       const query = lastWordMatch[0].substring(1);

@@ -78,7 +78,7 @@ export async function parseMarkdownToHtml(content: string, notes: Note[] = [], d
 
   
   // Replace tags: #word with special statuses
-  const tagRegex = /(^|\s|>)(#[\p{L}\p{N}_\-]+)/gu;
+  const tagRegex = /(^|\s|>)(#[\p{L}\p{N}_\-\/]+)/gu;
   parsed = parsed.replace(tagRegex, (_, prefix, tag) => {
     const t = tag.toLowerCase();
     if (t === '#seed') {

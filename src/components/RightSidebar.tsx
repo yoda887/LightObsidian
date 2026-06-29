@@ -71,7 +71,7 @@ export default function RightSidebar({
     });
 
     // Extract tags from all notes: #word
-    const tagRegex = /(?<=^|\s)#([\p{L}\p{N}_\-]+)/gu;
+    const tagRegex = /(?<=^|\s)#([\p{L}\p{N}_\-\/]+)/gu;
     const allTags = new Set<string>();
     notes.forEach(n => {
       let tMatch;
@@ -247,7 +247,7 @@ export default function RightSidebar({
   // SKILLS / XP CALCULATIONS
   // ----------------------------------------------------
   const skills = useMemo(() => {
-    const tagRegex = /(?<=^|\s)#([\p{L}\p{N}_\-]+)/gu;
+    const tagRegex = /(?<=^|\s)#([\p{L}\p{N}_\-\/]+)/gu;
     const allCards = extractFlashcards(notes);
     
     const tagXP: Record<string, number> = {};
