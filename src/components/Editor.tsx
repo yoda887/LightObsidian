@@ -793,7 +793,7 @@ export default function Editor({
 
             {/* Note Metadata Block (Obsidian Properties Style) */}
             {frontmatter && Object.keys(parseYamlMetadata(frontmatter)).length > 0 && (
-              <div className="metadata-properties mb-6 pb-4 border-b border-slate-200 dark:border-zinc-800 shrink-0">
+              <div className="metadata-properties mb-4 shrink-0">
                 <div
                   onClick={() => setIsYamlCollapsed(!isYamlCollapsed)}
                   className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-3 cursor-pointer select-none hover:text-slate-600 dark:hover:text-zinc-300 transition-colors"
@@ -804,7 +804,7 @@ export default function Editor({
                   <span className="text-[9px] font-normal text-slate-300 dark:text-zinc-600 ml-1">({Object.keys(parseYamlMetadata(frontmatter)).length})</span>
                 </div>
                 {!isYamlCollapsed && (
-                <div className="divide-y divide-slate-100 dark:divide-zinc-800/40 border border-slate-200 dark:border-zinc-800 rounded-lg overflow-hidden bg-white/50 dark:bg-zinc-900/30 shadow-sm animate-in slide-in-from-top-1 fade-in duration-200">
+                <div className="divide-y divide-slate-100/50 dark:divide-zinc-800/20 animate-in slide-in-from-top-1 fade-in duration-200">
                   {Object.entries(parseYamlMetadata(frontmatter)).map(([key, val]) => {
                     let IconComponent = Type;
                     if (key === "tags" || key === "tag") IconComponent = Tag;
