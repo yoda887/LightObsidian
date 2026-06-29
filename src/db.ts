@@ -7,7 +7,8 @@ import { Note } from "./types";
 
 const DB_NAME = "LightObsidianReactDB";
 const STORE_NAME = "notes";
-const DB_VERSION = 1;
+const VAULT_STORE = "vault";
+const DB_VERSION = 2;
 
 export function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -18,6 +19,9 @@ export function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: "id" });
       }
+      if (!db.objectStoreNames.contains(VAULT_STORE)) {
+        db.createObjectStore(VAULT_STORE);
+      }
     };
 
     request.onsuccess = (event) => {
@@ -27,6 +31,39 @@ export function openDB(): Promise<IDBDatabase> {
     request.onerror = (event) => {
       reject((event.target as IDBOpenDBRequest).error);
     };
+  });
+}
+
+export async function saveVaultHandle(handle: FileSystemDirectoryHandle): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(VAULT_STORE, "readwrite");
+    const store = tx.objectStore(VAULT_STORE);
+    const request = store.put(handle, "vaultHandle");
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function getVaultHandle(): Promise<FileSystemDirectoryHandle | null> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(VAULT_STORE, "readonly");
+    const store = tx.objectStore(VAULT_STORE);
+    const request = store.get("vaultHandle");
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function clearVaultHandle(): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(VAULT_STORE, "readwrite");
+    const store = tx.objectStore(VAULT_STORE);
+    const request = store.delete("vaultHandle");
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
   });
 }
 

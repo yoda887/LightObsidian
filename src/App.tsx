@@ -6,7 +6,7 @@
 import React, { useEffect, useState } from "react";
 import { Note } from "./types";
 import { generateSingleHtmlApp, splitFrontmatter, replacePlaintextInMarkdown } from "./utils";
-import { getAllNotes, putNote, deleteNote, clearNotes } from "./db";
+import { getAllNotes, putNote, deleteNote, clearNotes, saveVaultHandle, getVaultHandle, clearVaultHandle } from "./db";
 import Sidebar from "./components/Sidebar";
 import Editor from "./components/Editor";
 import GraphView from "./components/GraphView";
@@ -189,6 +189,7 @@ export default function App() {
       // @ts-ignore
       const handle = await window.showDirectoryPicker();
       setVaultHandle(handle);
+      await saveVaultHandle(handle);
       const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(handle);
       
       setFolders(loadedFolders);
@@ -247,6 +248,34 @@ export default function App() {
   useEffect(() => {
     const initData = async () => {
       try {
+        // Try to restore saved vault handle
+        const savedHandle = await getVaultHandle();
+        if (savedHandle) {
+          try {
+            // @ts-ignore - requestPermission is not in all TS defs
+            const perm = await savedHandle.requestPermission({ mode: "readwrite" });
+            if (perm === "granted") {
+              setVaultHandle(savedHandle);
+              const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(savedHandle);
+              setFolders(loadedFolders);
+              if (loadedNotes.length > 0) {
+                setNotes(loadedNotes);
+                setCurrentNoteId(loadedNotes[0].id);
+                setOpenNoteIds([loadedNotes[0].id]);
+                await clearNotes();
+                for (const n of loadedNotes) await putNote(n);
+              }
+              return; // Vault restored successfully, skip default loading
+            } else {
+              // Permission denied, clear saved handle
+              await clearVaultHandle();
+            }
+          } catch (e) {
+            console.warn("Could not restore vault handle:", e);
+            await clearVaultHandle();
+          }
+        }
+
         const dbNotes = await getAllNotes();
         if (dbNotes.length > 0) {
           setNotes(dbNotes);
