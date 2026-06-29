@@ -31,6 +31,10 @@ import {
   Settings,
   BookOpen,
   Sliders,
+  CheckSquare,
+  Hash,
+  Type,
+  List,
 } from "lucide-react";
 
 interface EditorProps {
@@ -60,6 +64,97 @@ export default function Editor({
   isZenMode,
   onExtractNote,
 }: EditorProps) {
+  const renderStringWithLinks = (text: string) => {
+    const parts = [];
+    let lastIndex = 0;
+    const regex = /(!?)\[\[(.*?)(?:\|(.*?))?\]\]|https?:\/\/[^\s]+/g;
+    let match;
+
+    while ((match = regex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(text.substring(lastIndex, match.index));
+      }
+
+      const matchedStr = match[0];
+      if (matchedStr.startsWith("http://") || matchedStr.startsWith("https://")) {
+        parts.push(
+          <a
+            key={match.index}
+            href={matchedStr}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-indigo-600 dark:text-indigo-400 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {matchedStr}
+          </a>
+        );
+      } else {
+        const target = match[2].trim();
+        const alias = match[3] ? match[3].trim() : target;
+        parts.push(
+          <span
+            key={match.index}
+            className="text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer font-medium"
+            onClick={(e) => {
+              e.stopPropagation();
+              onWikilinkClick(target);
+            }}
+          >
+            {alias}
+          </span>
+        );
+      }
+      lastIndex = regex.lastIndex;
+    }
+
+    if (lastIndex < text.length) {
+      parts.push(text.substring(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : text;
+  };
+
+  const renderPropertyValue = (key: string, val: any) => {
+    if (Array.isArray(val)) {
+      const isTags = key === "tags" || key === "tag";
+      return (
+        <div className="flex flex-wrap gap-1">
+          {val.map((item, idx) => (
+            <span
+              key={idx}
+              className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                isTags
+                  ? "bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100/30 dark:border-indigo-900/30"
+                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-200/50 dark:border-zinc-700/50"
+              }`}
+            >
+              {isTags ? `#${item}` : renderStringWithLinks(String(item))}
+            </span>
+          ))}
+        </div>
+      );
+    }
+
+    if (typeof val === "boolean" || val === "true" || val === "false") {
+      const boolVal = val === true || val === "true";
+      return (
+        <input
+          type="checkbox"
+          checked={boolVal}
+          readOnly
+          className="w-3.5 h-3.5 text-indigo-600 border-slate-300 dark:border-zinc-700 rounded focus:ring-indigo-500 pointer-events-none"
+        />
+      );
+    }
+
+    return (
+      <span className="font-sans">
+        {renderStringWithLinks(String(val))}
+      </span>
+    );
+  };
+
   const [htmlContent, setHtmlContent] = useState("");
   const [localTitle, setLocalTitle] = useState(note.title);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -687,10 +782,12 @@ export default function Editor({
                 </div>
                 <div className="divide-y divide-slate-100 dark:divide-zinc-800/40 border border-slate-200 dark:border-zinc-800 rounded-lg overflow-hidden bg-white/50 dark:bg-zinc-900/30 shadow-sm">
                   {Object.entries(parseYamlMetadata(frontmatter)).map(([key, val]) => {
-                    let IconComponent = FileText;
+                    let IconComponent = Type;
                     if (key === "tags" || key === "tag") IconComponent = Tag;
-                    else if (key === "aliases" || key === "alias") IconComponent = Link2;
+                    else if (key === "aliases" || key === "alias" || Array.isArray(val)) IconComponent = List;
                     else if (key.includes("date") || key.includes("time") || key.includes("created") || key.includes("read")) IconComponent = Clock;
+                    else if (typeof val === "boolean" || val === "true" || val === "false") IconComponent = CheckSquare;
+                    else if (typeof val === "number" || (!isNaN(Number(val)) && val !== "")) IconComponent = Hash;
                     
                     return (
                       <div key={key} className="flex items-center min-h-[36px] px-3 py-1.5 gap-4">
@@ -698,20 +795,8 @@ export default function Editor({
                           <IconComponent className="w-3.5 h-3.5 text-slate-400/80" />
                           <span className="truncate">{key}</span>
                         </div>
-                        <div className="flex-1 text-xs text-slate-700 dark:text-zinc-300">
-                          {Array.isArray(val) ? (
-                            <div className="flex flex-wrap gap-1">
-                              {val.map(tag => (
-                                <span key={tag} className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100/50 dark:border-indigo-900/30 rounded-full text-[10px] font-medium text-indigo-600 dark:text-indigo-400">
-                                  #{tag}
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="font-sans">
-                              {String(val)}
-                            </span>
-                          )}
+                        <div className="flex-1 text-xs text-slate-700 dark:text-zinc-300 flex items-center">
+                          {renderPropertyValue(key, val)}
                         </div>
                       </div>
                     );
