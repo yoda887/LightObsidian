@@ -79,7 +79,7 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
           const type = typeMatch[1].trim();
           target = target.slice(typeMatch[0].length).trim();
           const rest = content.slice(typeMatch[0].length);
-          displayContent = `<span class="text-[9px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 px-1 py-0.5 rounded border border-rose-200 dark:border-rose-800/50 align-middle">${type}</span><span class="md-token">:</span>${rest}`;
+          displayContent = `<span class="font-bold text-rose-600 dark:text-rose-400">${type}</span><span class="md-token">:</span>${rest}`;
         }
       }
 

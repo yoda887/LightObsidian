@@ -96,7 +96,7 @@ export async function parseMarkdownToHtml(content: string, notes: Note[] = [], d
   return parsed.replace(wikilinkRegex, (_, typeMatch, target, label) => {
     const cleanTarget = target.trim();
     const displayLabel = label ? label.trim() : cleanTarget;
-    const typeBadge = typeMatch ? `<span class="text-[9px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 px-1 py-0.5 rounded mr-1 border border-rose-200 dark:border-rose-800/50 align-middle">${typeMatch.trim()}</span>` : "";
+    const typeBadge = typeMatch ? `<span class="font-bold text-rose-600 dark:text-rose-400 mr-1">${typeMatch.trim()}:</span>` : "";
     return `${typeBadge}<span data-note="${encodeURIComponent(cleanTarget)}" class="wikilink cursor-pointer text-violet-600 dark:text-violet-400 hover:text-violet-500 dark:hover:text-violet-300 hover:underline font-semibold border-b border-dashed border-violet-400 transition-colors">${displayLabel}</span>`;
   });
 }
