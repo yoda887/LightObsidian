@@ -91,6 +91,23 @@ export default function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
             </div>
           </section>
 
+          {/* Properties (YAML Frontmatter) */}
+          <section>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <Book className="w-4 h-4 text-slate-400" />
+              Properties (Frontmatter)
+            </h3>
+            <div className="text-sm text-slate-600 dark:text-zinc-400 space-y-2">
+              <p>Add metadata to your notes using YAML frontmatter at the very top of the file.</p>
+              <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded border border-slate-200 dark:border-zinc-800">
+                <code className="text-xs font-mono text-indigo-600 dark:text-indigo-400 block mb-1">---</code>
+                <code className="text-xs font-mono text-indigo-600 dark:text-indigo-400 block mb-1">author: John Doe</code>
+                <code className="text-xs font-mono text-indigo-600 dark:text-indigo-400 block mb-1">tags: [research, ai]</code>
+                <code className="text-xs font-mono text-indigo-600 dark:text-indigo-400 block mb-1">---</code>
+              </div>
+            </div>
+          </section>
+
           {/* Tags & Statuses */}
           <section>
             <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -98,7 +115,7 @@ export default function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
               Tags & Statuses
             </h3>
             <div className="text-sm text-slate-600 dark:text-zinc-400 space-y-2">
-              <p>Use <code className="text-xs font-mono text-indigo-600 dark:text-indigo-400">#tagname</code> to organize notes. There are three special status tags with unique styling:</p>
+              <p>Use <code className="text-xs font-mono text-indigo-600 dark:text-indigo-400">#tagname</code> or hierarchical tags like <code className="text-xs font-mono text-indigo-600 dark:text-indigo-400">#project/urgent</code> to organize notes. There are three special status tags with unique styling:</p>
               <div className="flex flex-wrap gap-2 mt-2">
                 <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 rounded-md text-xs font-bold inline-flex items-center gap-1 shadow-sm border border-emerald-200 dark:border-emerald-800/50">🌱 #seed</span>
                 <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 rounded-md text-xs font-bold inline-flex items-center gap-1 shadow-sm border border-amber-200 dark:border-amber-800/50">🐣 #incubator</span>
@@ -213,6 +230,28 @@ export default function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
             </div>
           </section>
 
+          {/* Core Features */}
+          <section>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <Zap className="w-4 h-4 text-slate-400" />
+              Core Features & Sync
+            </h3>
+            <div className="text-sm text-slate-600 dark:text-zinc-400 space-y-4">
+              <div>
+                <strong className="text-slate-800 dark:text-zinc-200 block mb-1">Local Folder Sync</strong>
+                <p>Click "Open Folder" in the sidebar to sync with a local directory on your PC. Notes are saved directly as <code className="font-mono text-xs">.md</code> files, ensuring your data is always yours and works with standard Obsidian.</p>
+              </div>
+              <div>
+                <strong className="text-slate-800 dark:text-zinc-200 block mb-1">Search & Filter</strong>
+                <p>Use the search bar in the left sidebar to quickly find notes by title or content. You can also filter notes by clicking on any tag in the right sidebar.</p>
+              </div>
+              <div>
+                <strong className="text-slate-800 dark:text-zinc-200 block mb-1">Hover Preview</strong>
+                <p>Hover over any wikilink in Preview or Dynamic mode to see a quick popup preview of the linked note's content without opening it.</p>
+              </div>
+            </div>
+          </section>
+
           {/* Editor Modes */}
           <section>
             <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -227,6 +266,13 @@ export default function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
               <li><strong className="text-slate-800 dark:text-zinc-200">Graph Map:</strong> Visual network representation of how your notes are linked together.</li>
               <li><strong className="text-slate-800 dark:text-zinc-200">Timeline:</strong> A chronological view of your notes.</li>
             </ul>
+            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-zinc-800">
+              <strong className="text-slate-800 dark:text-zinc-200 block mb-2 text-xs uppercase tracking-wider">Hotkeys</strong>
+              <ul className="text-sm text-slate-600 dark:text-zinc-400 space-y-2">
+                <li><kbd className="px-1.5 py-0.5 bg-slate-100 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 rounded text-[10px] font-mono mr-1">F11</kbd> Toggle Zen Mode (Distraction-free mode)</li>
+                <li><kbd className="px-1.5 py-0.5 bg-slate-100 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 rounded text-[10px] font-mono mr-1">Escape</kbd> Exit Zen Mode</li>
+              </ul>
+            </div>
           </section>
         </div>
       </div>
