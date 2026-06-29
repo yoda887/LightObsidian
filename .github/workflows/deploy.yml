@@ -1,0 +1,38 @@
+name: Deploy to Hetzner VPS
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Ensure target directory exists
+            mkdir -p ${{ secrets.SERVER_PATH }}
+            
+            # Clone if first time, else pull
+            if [ ! -d "${{ secrets.SERVER_PATH }}/.git" ]; then
+              git clone https://github.com/yoda887/LightObsidian.git ${{ secrets.SERVER_PATH }}
+            else
+              cd ${{ secrets.SERVER_PATH }}
+              git fetch --all
+              git reset --hard origin/master
+            fi
+
+            # Install and build
+            cd ${{ secrets.SERVER_PATH }}
+            npm install
+            npm run build
