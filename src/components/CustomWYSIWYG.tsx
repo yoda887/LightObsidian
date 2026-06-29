@@ -92,6 +92,9 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
     });
     processed = processed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-extlink cursor-pointer text-blue-600 dark:text-blue-400 hover:underline"><span class="md-token">[</span>$1<span class="md-token">](</span><span class="md-token opacity-50 text-xs">$2</span><span class="md-token">)</span></a>');
 
+    // SR Comments
+    processed = processed.replace(/&lt;!--SR:.*?--&gt;/g, '<span class="text-slate-300 dark:text-zinc-600 font-mono text-[11px] opacity-60">$&</span>');
+
     return `<span class="md-line${zenClass}">${processed}</span>`;
   });
 
