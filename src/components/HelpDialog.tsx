@@ -140,6 +140,35 @@ export default function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
             </div>
           </section>
 
+          {/* Incremental Reading */}
+          <section>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <Book className="w-4 h-4 text-slate-400" />
+              Incremental Reading
+            </h3>
+            <div className="text-sm text-slate-600 dark:text-zinc-400 space-y-2">
+              <p>Process large articles, books, or notes in scheduled, bite-sized intervals to maximize retention and prevent cognitive overload.</p>
+              <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded border border-slate-200 dark:border-zinc-800 space-y-2 text-xs">
+                <div>
+                  <strong className="text-slate-800 dark:text-zinc-200 block mb-0.5">1. Reading Queue</strong>
+                  <span>Add any note to the queue via the **Reading List** tab in the right sidebar. Due notes are sorted by priority.</span>
+                </div>
+                <div>
+                  <strong className="text-slate-800 dark:text-zinc-200 block mb-0.5">2. Rescheduling Panel</strong>
+                  <span>Grade the complexity and priority of your reading sessions (Soon, Good, Easy, Done) to schedule next review.</span>
+                </div>
+                <div>
+                  <strong className="text-slate-800 dark:text-zinc-200 block mb-0.5">3. Caret Memory</strong>
+                  <span>The editor automatically remembers your exact cursor position and restores it next time you open the note from the queue.</span>
+                </div>
+                <div>
+                  <strong className="text-slate-800 dark:text-zinc-200 block mb-0.5">4. Extracts</strong>
+                  <span>Select any text and click **Extract** in the tooltip to split off a sub-article. It replaces the text with a transclusion link <code className="font-mono text-indigo-600 dark:text-indigo-400">![[Extract: ...]]</code> and schedules the extract as a new item.</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
           {/* Editor Modes */}
           <section>
             <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wider mb-3 flex items-center gap-2">
