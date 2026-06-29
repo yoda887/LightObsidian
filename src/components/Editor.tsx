@@ -783,11 +783,17 @@ export default function Editor({
             {/* Note Metadata Block (Obsidian Properties Style) */}
             {frontmatter && Object.keys(parseYamlMetadata(frontmatter)).length > 0 && (
               <div className="metadata-properties mb-6 pb-4 border-b border-slate-200 dark:border-zinc-800 shrink-0">
-                <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-3">
+                <div
+                  onClick={() => setIsYamlCollapsed(!isYamlCollapsed)}
+                  className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-3 cursor-pointer select-none hover:text-slate-600 dark:hover:text-zinc-300 transition-colors"
+                >
+                  <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isYamlCollapsed ? "" : "rotate-90"}`} />
                   <Sliders className="w-3.5 h-3.5 text-indigo-500" />
                   <span>Properties</span>
+                  <span className="text-[9px] font-normal text-slate-300 dark:text-zinc-600 ml-1">({Object.keys(parseYamlMetadata(frontmatter)).length})</span>
                 </div>
-                <div className="divide-y divide-slate-100 dark:divide-zinc-800/40 border border-slate-200 dark:border-zinc-800 rounded-lg overflow-hidden bg-white/50 dark:bg-zinc-900/30 shadow-sm">
+                {!isYamlCollapsed && (
+                <div className="divide-y divide-slate-100 dark:divide-zinc-800/40 border border-slate-200 dark:border-zinc-800 rounded-lg overflow-hidden bg-white/50 dark:bg-zinc-900/30 shadow-sm animate-in slide-in-from-top-1 fade-in duration-200">
                   {Object.entries(parseYamlMetadata(frontmatter)).map(([key, val]) => {
                     let IconComponent = Type;
                     if (key === "tags" || key === "tag") IconComponent = Tag;
@@ -809,6 +815,7 @@ export default function Editor({
                     );
                   })}
                 </div>
+                )}
               </div>
             )}
 
