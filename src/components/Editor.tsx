@@ -814,8 +814,8 @@ export default function Editor({
                     else if (typeof val === "number" || (!isNaN(Number(val)) && val !== "")) IconComponent = Hash;
                     
                     return (
-                      <div key={key} className="flex items-center min-h-[36px] px-3 py-1.5 gap-4">
-                        <div className="w-32 flex items-center gap-2 text-xs font-medium text-slate-400 dark:text-zinc-500 shrink-0">
+                      <div key={key} className="flex items-center min-h-[32px] px-1 py-1 gap-2">
+                        <div className="w-20 flex items-center gap-1.5 text-xs font-medium text-slate-400 dark:text-zinc-500 shrink-0">
                           <IconComponent className="w-3.5 h-3.5 text-slate-400/80" />
                           <span className="truncate">{key}</span>
                         </div>
