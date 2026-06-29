@@ -712,7 +712,10 @@ export default function Editor({
             <input
               type="text"
               value={localTitle}
-              onChange={(e) => setLocalTitle(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[<>:"/\\|?*]/g, '');
+                setLocalTitle(val);
+              }}
               onBlur={handleTitleBlur}
               onKeyDown={handleTitleKeyDown}
               placeholder="Note Title"

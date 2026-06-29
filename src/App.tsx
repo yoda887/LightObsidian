@@ -425,7 +425,8 @@ export default function App() {
 
   // Create a new note
   const handleCreateNote = async (folder: string = "", initialTitle: string = "Untitled") => {
-    let finalTitle = initialTitle.trim();
+    let finalTitle = initialTitle.replace(/[<>:"/\\|?*]/g, '').trim();
+    if (!finalTitle) finalTitle = "Untitled";
     
     if (finalTitle === "Untitled" && notes.some(n => n.title.trim().toLowerCase() === "untitled")) {
       finalTitle = generateUniqueTitle();
@@ -521,7 +522,8 @@ export default function App() {
   const handleUpdateNote = async (id: string, updates: Partial<Note>) => {
     // Prevent duplicate titles on rename
     if (updates.title !== undefined) {
-      const newTitle = updates.title.trim();
+      const newTitle = updates.title.replace(/[<>:"/\\|?*]/g, '').trim();
+      updates.title = newTitle; // Ensure the sanitized title is what gets saved
       if (newTitle) {
         const existing = notes.find(n => n.id !== id && n.title.trim().toLowerCase() === newTitle.toLowerCase());
         if (existing) {
