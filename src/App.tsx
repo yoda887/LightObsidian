@@ -512,7 +512,7 @@ if (savedHandle) {
     }
 
     setCurrentNoteId(newNote.id);
-    setOpenNoteIds(prev => [...prev, newNote.id]);
+    setOpenNoteIds(prev => prev.includes(newNote.id) ? prev : [...prev, newNote.id]);
     if (appMode === "graph") setAppMode("split");
   };
 
