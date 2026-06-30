@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Note } from "../types";
-import { Link, Hash, X, Sparkles, RotateCcw, Check, FileText, Network, BarChart2, Award, BookOpen } from "lucide-react";
+import { Link, Hash, X, Sparkles, RotateCcw, Check, FileText, Network, BarChart2, Award, BookOpen, Brain } from "lucide-react";
 import { Flashcard, extractFlashcards } from "../flashcards";
 import { splitFrontmatter, parseYamlMetadata, updateYamlMetadata } from "../utils";
 
@@ -34,6 +34,13 @@ export default function RightSidebar({
   const [activeTab, setActiveTab] = useState<"links" | "tags" | "context" | "focus" | "graph" | "stats" | "skills" | "reading">(initialTab || "links");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+
+  const isLearningTab = ["focus", "stats", "skills", "reading"].includes(activeTab);
+
+  const setMainTab = (tab: "node" | "learning") => {
+    if (tab === "node" && isLearningTab) setActiveTab("links");
+    if (tab === "learning" && !isLearningTab) setActiveTab("reading");
+  };
 
   // Sync tab with initialTab prop when it changes
   useEffect(() => {
@@ -349,116 +356,136 @@ export default function RightSidebar({
 
   return (
     <aside className="w-64 bg-slate-50 dark:bg-zinc-950 border-l border-slate-200 dark:border-zinc-800 flex flex-col shrink-0 h-full">
-      {/* Header */}
-      <div className="h-10 flex items-center justify-between px-3 border-b border-slate-200 dark:border-zinc-800 shrink-0 bg-slate-50 dark:bg-zinc-900">
-        <span className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest pl-1">
-          Info Panel
-        </span>
+      {/* Main Tabs (Node vs Learning) */}
+      <div className="h-10 flex border-b border-slate-200 dark:border-zinc-800 shrink-0 bg-slate-50 dark:bg-zinc-900">
         <button
-          onClick={onClose}
-          className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded transition-colors cursor-pointer"
-          title="Close panel"
+          onClick={() => setMainTab('node')}
+          className={`flex-1 flex items-center justify-center gap-2 h-full transition-colors font-semibold text-xs tracking-wide cursor-pointer ${
+            !isLearningTab 
+              ? 'text-indigo-600 dark:text-indigo-400 bg-white dark:bg-zinc-950 border-b-2 border-indigo-600 dark:border-indigo-400' 
+              : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 bg-transparent border-b-2 border-transparent'
+          }`}
         >
-          <X className="w-3.5 h-3.5" />
+          <FileText className="w-4 h-4" />
+          Node
+        </button>
+        <button
+          onClick={() => setMainTab('learning')}
+          className={`flex-1 flex items-center justify-center gap-2 h-full transition-colors font-semibold text-xs tracking-wide cursor-pointer ${
+            isLearningTab 
+              ? 'text-rose-600 dark:text-rose-400 bg-white dark:bg-zinc-950 border-b-2 border-rose-600 dark:border-rose-400' 
+              : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 bg-transparent border-b-2 border-transparent'
+          }`}
+        >
+          <Brain className="w-4 h-4" />
+          Learning
         </button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-slate-200 dark:border-zinc-800 shrink-0 h-10">
-        <button
-          onClick={() => setActiveTab("links")}
-          className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
-            activeTab === "links" 
-              ? "text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" 
-              : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent"
-          }`}
-          title="Links (Backlinks & Outgoing)"
-        >
-          <Link className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => setActiveTab("graph")}
-          className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
-            activeTab === "graph" 
-              ? "text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" 
-              : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent"
-          }`}
-          title="Local Graph View (Локальный граф)"
-        >
-          <Network className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => setActiveTab("context")}
-          className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
-            activeTab === "context" 
-              ? "text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" 
-              : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent"
-          }`}
-          title="Context & Suggestions"
-        >
-          <Sparkles className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => setActiveTab("tags")}
-          className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
-            activeTab === "tags" 
-              ? "text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" 
-              : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent"
-          }`}
-          title="Tags Explorer"
-        >
-          <Hash className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => setActiveTab("focus")}
-          className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
-            activeTab === "focus" 
-              ? "text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" 
-              : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent"
-          }`}
-          title="Focus Queue (Работа над ошибками)"
-        >
-          <div className="relative">
-            <RotateCcw className="w-4 h-4" />
-            {focusQueue.length > 0 && (
-              <span className="absolute -top-1 -right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-            )}
-          </div>
-        </button>
-        <button
-          onClick={() => setActiveTab("stats")}
-          className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
-            activeTab === "stats" 
-              ? "text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" 
-              : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent"
-          }`}
-          title="Study Statistics & Heatmap (Статистика)"
-        >
-          <BarChart2 className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => setActiveTab("skills")}
-          className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
-            activeTab === "skills" 
-              ? "text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" 
-              : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent"
-          }`}
-          title="Skill Tree (Дерево навыков)"
-        >
-          <Award className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => setActiveTab("reading")}
-          className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
-            activeTab === "reading" 
-              ? "text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" 
-              : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent"
-          }`}
-          title="Reading Queue (Инкрементальное чтение)"
-        >
-          <BookOpen className="w-4 h-4" />
-        </button>
+      {/* Sub Tabs */}
+      <div className="flex border-b border-slate-200 dark:border-zinc-800 shrink-0 h-10 bg-white dark:bg-zinc-950">
+        {!isLearningTab ? (
+          <>
+            <button
+              onClick={() => setActiveTab('links')}
+              className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
+                activeTab === 'links' 
+                  ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400' 
+                  : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent'
+              }`}
+              title="Links (Backlinks & Outgoing)"
+            >
+              <Link className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setActiveTab('graph')}
+              className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
+                activeTab === 'graph' 
+                  ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400' 
+                  : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent'
+              }`}
+              title="Local Graph View (Локальный граф)"
+            >
+              <Network className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setActiveTab('context')}
+              className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
+                activeTab === 'context' 
+                  ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400' 
+                  : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent'
+              }`}
+              title="Context & Suggestions"
+            >
+              <Sparkles className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setActiveTab('tags')}
+              className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
+                activeTab === 'tags' 
+                  ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400' 
+                  : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent'
+              }`}
+              title="Tags Explorer"
+            >
+              <Hash className="w-4 h-4" />
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={() => setActiveTab('reading')}
+              className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
+                activeTab === 'reading' 
+                  ? 'text-rose-600 dark:text-rose-400 border-b-2 border-rose-600 dark:border-rose-400' 
+                  : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent'
+              }`}
+              title="Reading Queue (Очередь чтения)"
+            >
+              <BookOpen className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setActiveTab('focus')}
+              className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
+                activeTab === 'focus' 
+                  ? 'text-rose-600 dark:text-rose-400 border-b-2 border-rose-600 dark:border-rose-400' 
+                  : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent'
+              }`}
+              title="Focus Queue (Работа над ошибками)"
+            >
+              <div className="relative">
+                <RotateCcw className="w-4 h-4" />
+                {focusQueue.length > 0 && (
+                  <span className="absolute -top-1 -right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+                )}
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('stats')}
+              className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
+                activeTab === 'stats' 
+                  ? 'text-rose-600 dark:text-rose-400 border-b-2 border-rose-600 dark:border-rose-400' 
+                  : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent'
+              }`}
+              title="Study Statistics & Heatmap (Статистика)"
+            >
+              <BarChart2 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setActiveTab('skills')}
+              className={`flex-1 flex items-center justify-center h-full transition-colors cursor-pointer ${
+                activeTab === 'skills' 
+                  ? 'text-rose-600 dark:text-rose-400 border-b-2 border-rose-600 dark:border-rose-400' 
+                  : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 border-b-2 border-transparent'
+              }`}
+              title="Skill Tree (Дерево навыков)"
+            >
+              <Award className="w-4 h-4" />
+            </button>
+          </>
+        )}
       </div>
+
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
