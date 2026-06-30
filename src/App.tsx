@@ -146,6 +146,8 @@ export default function App() {
     return currentHandle;
   };
 
+  const [vaultPendingHandle, setVaultPendingHandle] = useState<any>(null);
+
   const getFilesRecursively = async (dirHandle: any, currentPath: string = "", existingNotes: Note[] = []): Promise<{notes: Note[], folders: string[]}> => {
     let notesResult: Note[] = [];
     let foldersResult: string[] = [];
@@ -231,6 +233,31 @@ export default function App() {
     }
   }, [currentNoteId, history, historyIndex]);
 
+  const handleRestoreVaultAccess = async () => {
+  if (!vaultPendingHandle) return;
+  try {
+    // Вот теперь, по клику юзера, браузер разрешит показать окно подтверждения
+    const perm = await vaultPendingHandle.requestPermission({ mode: "readwrite" });
+    if (perm === "granted") {
+      setVaultHandle(vaultPendingHandle);
+      setVaultPendingHandle(null);
+      
+      // Загружаем данные из папки
+      const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(vaultPendingHandle);
+      setFolders(loadedFolders);
+      if (loadedNotes.length > 0) {
+        setNotes(loadedNotes);
+        setCurrentNoteId(loadedNotes[0].id);
+        setOpenNoteIds([loadedNotes[0].id]);
+        await clearNotes();
+        for (const n of loadedNotes) await putNote(n);
+      }
+    }
+  } catch (err) {
+    console.error("Пользователь отменил восстановление доступа", err);
+  }
+};
+
   const handleGoBack = () => {
     if (historyIndex > 0) {
       const newIndex = historyIndex - 1;
@@ -257,31 +284,36 @@ export default function App() {
       try {
         // Try to restore saved vault handle
         const savedHandle = await getVaultHandle();
-        if (savedHandle) {
-          try {
-            // @ts-ignore - requestPermission is not in all TS defs
-            const perm = await savedHandle.requestPermission({ mode: "readwrite" });
-            if (perm === "granted") {
-              setVaultHandle(savedHandle);
-              const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(savedHandle);
-              setFolders(loadedFolders);
-              if (loadedNotes.length > 0) {
-                setNotes(loadedNotes);
-                setCurrentNoteId(loadedNotes[0].id);
-                setOpenNoteIds([loadedNotes[0].id]);
-                await clearNotes();
-                for (const n of loadedNotes) await putNote(n);
-              }
-              return; // Vault restored successfully, skip default loading
-            } else {
-              // Permission denied, clear saved handle
-              await clearVaultHandle();
-            }
-          } catch (e) {
-            console.warn("Could not restore vault handle:", e);
-            await clearVaultHandle();
-          }
-        }
+if (savedHandle) {
+  try {
+    // Используем queryPermission, он не требует клика
+    const perm = await savedHandle.queryPermission({ mode: "readwrite" });
+    
+    if (perm === "granted") {
+      setVaultHandle(savedHandle);
+      const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(savedHandle);
+      setFolders(loadedFolders);
+      if (loadedNotes.length > 0) {
+        setNotes(loadedNotes);
+        setCurrentNoteId(loadedNotes[0].id);
+        setOpenNoteIds([loadedNotes[0].id]);
+        await clearNotes();
+        for (const n of loadedNotes) await putNote(n);
+      }
+      return; 
+    } else if (perm === "prompt") {
+      // Права есть, но их нужно подтвердить кликом. 
+      // Сохраняем handle в стейт, чтобы показать кнопку юзеру
+      setVaultPendingHandle(savedHandle);
+      // Не делаем clearVaultHandle(), просто показываем пока локальные заметки
+    } else {
+      await clearVaultHandle();
+    }
+  } catch (e) {
+    console.warn("Could not restore vault handle:", e);
+    await clearVaultHandle();
+  }
+}
 
         const dbNotes = await getAllNotes();
         if (dbNotes.length > 0) {
