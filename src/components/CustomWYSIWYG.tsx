@@ -50,18 +50,18 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
     // Quiz / Test Blocks (Start and End tags)
     if (/^:::test$/.test(line)) {
       inTestBlock = true;
-      return `<span class="md-line${zenClass} font-mono text-indigo-400/80 pl-2 pr-4 border-l-4 border-indigo-400 rounded-tr"><span class="md-token">:::test</span></span>`;
+      return `<span class="md-line${zenClass} QUIZ_START"><span class="md-token">:::test</span></span>`;
     }
     if (/^:::$/.test(line) && inTestBlock) {
       inTestBlock = false;
-      return `<span class="md-line${zenClass} font-mono text-indigo-400/80 pl-2 pr-4 border-l-4 border-indigo-400 rounded-br"><span class="md-token">:::</span></span>`;
+      return `<span class="md-line${zenClass} QUIZ_END"><span class="md-token">:::</span></span>`;
     }
     
     if (inTestBlock) {
       if (line.match(/^-\s+\[[ x]\]/i)) {
-        zenClass += " pl-2 pr-4 border-l-4 border-indigo-400 text-slate-700 dark:text-slate-300";
+        zenClass += " pl-2 text-slate-700 dark:text-slate-300";
       } else {
-        zenClass += " pl-2 pr-4 border-l-4 border-indigo-400 font-semibold text-slate-900 dark:text-slate-100";
+        zenClass += " pl-2 font-semibold text-slate-900 dark:text-slate-100";
       }
     }
 
@@ -118,7 +118,21 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
   });
 
   // Rejoin with newline characters and append <br/> to fix the trailing newline visual bug in contentEditable
-  return highlightedLines.join('\n') + '<br/>';
+  let finalHtml = highlightedLines.join('\n');
+
+  // Wrap test blocks in a div with a background, preserving textContent by hiding the external newlines
+  finalHtml = finalHtml.replace(
+    /(^|\n)(<span class="md-line[^>]* QUIZ_START">[\s\S]*?<\/span>)\n([\s\S]*?)\n(<span class="md-line[^>]* QUIZ_END">[\s\S]*?<\/span>)(\n|$)/g,
+    (match, beforeNl, p1, p2, p3, afterNl) => {
+      const startTag = p1.replace('QUIZ_START', 'font-mono text-indigo-400 opacity-70 text-[11px] uppercase tracking-widest pl-2');
+      const endTag = p3.replace('QUIZ_END', 'font-mono text-indigo-400 opacity-70 text-[11px] uppercase tracking-widest pl-2');
+      const prefix = beforeNl === '\n' ? `<span style="display:none;">\n</span>` : ``;
+      const suffix = afterNl === '\n' ? `<span style="display:none;">\n</span>` : ``;
+      return `${prefix}<div class="bg-indigo-50/70 dark:bg-indigo-900/30 border-l-[3px] border-indigo-500 rounded-r shadow-sm my-1 py-1 pr-2">\n${startTag}\n${p2}\n${endTag}\n</div>${suffix}`;
+    }
+  );
+
+  return finalHtml + '<br/>';
 };
 
 export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
