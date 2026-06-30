@@ -50,15 +50,19 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
     // Quiz / Test Blocks (Start and End tags)
     if (/^:::test$/.test(line)) {
       inTestBlock = true;
-      return `<span class="md-line${zenClass} font-bold text-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20 px-2 rounded-t mt-1"><span class="md-token">:::test</span></span>`;
+      return `<span class="md-line${zenClass} font-mono text-indigo-400/80 bg-indigo-50/50 dark:bg-indigo-900/20 pl-2 pr-4 border-l-4 border-indigo-400 rounded-tr"><span class="md-token">:::test</span></span>`;
     }
     if (/^:::$/.test(line) && inTestBlock) {
       inTestBlock = false;
-      return `<span class="md-line${zenClass} font-bold text-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20 px-2 rounded-b mb-1"><span class="md-token">:::</span></span>`;
+      return `<span class="md-line${zenClass} font-mono text-indigo-400/80 bg-indigo-50/50 dark:bg-indigo-900/20 pl-2 pr-4 border-l-4 border-indigo-400 rounded-br"><span class="md-token">:::</span></span>`;
     }
     
     if (inTestBlock) {
-      zenClass += " bg-indigo-50/50 dark:bg-indigo-900/20 px-2";
+      if (line.match(/^-\s+\[[ x]\]/i)) {
+        zenClass += " bg-indigo-50/50 dark:bg-indigo-900/20 pl-2 pr-4 border-l-4 border-indigo-400 text-slate-700 dark:text-slate-300";
+      } else {
+        zenClass += " bg-indigo-50/50 dark:bg-indigo-900/20 pl-2 pr-4 border-l-4 border-indigo-400 font-semibold text-slate-900 dark:text-slate-100";
+      }
     }
 
     // List items
