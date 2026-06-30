@@ -6,7 +6,8 @@
 import { useState } from "react";
 import { Note } from "../types";
 //import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock } from "lucide-react";
-import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock, AlertTriangle } from "lucide-react";
+//import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock, AlertTriangle } from "lucide-react";
+import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock, AlertTriangle, Loader2 } from "lucide-react";
 
 // interface SidebarProps {
 //   notes: Note[];
@@ -41,6 +42,7 @@ interface SidebarProps {
   onOpenVault?: () => void;
   vaultName?: string;
   isVaultPending?: boolean;
+  isVaultLoading?: boolean;
   onRestoreVaultAccess?: () => void;
   onOpenDailyNote: () => void;
   onOpenRandomNote: () => void;
@@ -237,6 +239,7 @@ export default function Sidebar({
   onOpenVault,
   vaultName,
   isVaultPending,
+  isVaultLoading,
   onRestoreVaultAccess,
   onOpenDailyNote,
   onOpenRandomNote
@@ -369,9 +372,14 @@ export default function Sidebar({
 
       {/* Notes List Scroll Area */}
       <div className="flex-1 overflow-y-auto p-3 space-y-0.5">
-        {treeRoot.length === 0 ? (
+        {isVaultLoading && treeRoot.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full space-y-3 text-slate-400 dark:text-zinc-500 py-10">
+            <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+            <div className="text-xs font-medium">Чтение сетевого диска...</div>
+          </div>
+        ) : treeRoot.length === 0 ? (
           <div className="p-4 text-center text-xs text-slate-400 dark:text-zinc-500 italic">
-            No notes found
+            Нет заметок
           </div>
         ) : (
           treeRoot.map((node) => (
@@ -394,12 +402,17 @@ export default function Sidebar({
           <div className="w-full flex items-center justify-between bg-slate-200 dark:bg-zinc-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 rounded-lg transition-colors group">
             <button
               onClick={onOpenVault}
-              className="flex-1 flex items-center space-x-2 px-3 py-2 text-slate-700 dark:text-zinc-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 cursor-pointer text-left truncate rounded-l-lg outline-none"
+              disabled={isVaultLoading}
+              className="flex-1 flex items-center space-x-2 px-3 py-2 text-slate-700 dark:text-zinc-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 cursor-pointer text-left truncate rounded-l-lg outline-none disabled:opacity-50"
               title="Open Local Folder (Vault)"
             >
-              <BookOpen className="w-4 h-4 shrink-0" />
+              {isVaultLoading ? (
+                <Loader2 className="w-4 h-4 shrink-0 animate-spin text-indigo-500" />
+              ) : (
+                <BookOpen className="w-4 h-4 shrink-0" />
+              )}
               <span className="text-xs font-semibold truncate">
-                {vaultName || "Open Vault..."}
+                {isVaultLoading ? "Синхронизация..." : (vaultName || "Open Vault...")}
               </span>
             </button>
             
