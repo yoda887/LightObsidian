@@ -29,9 +29,10 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
   let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   // Split by newline to process line by line
+  let inTestBlock = false;
   const lines = html.split('\n');
   const highlightedLines = lines.map((line, index) => {
-    const zenClass = isZenMode ? (index === activeLineIndex ? ' zen-active' : ' zen-inactive') : '';
+    let zenClass = isZenMode ? (index === activeLineIndex ? ' zen-active' : ' zen-inactive') : '';
     
     // Headers
     const headerMatch = line.match(/^(#{1,6})\s+(.*)$/);
@@ -48,10 +49,16 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
     
     // Quiz / Test Blocks (Start and End tags)
     if (/^:::test$/.test(line)) {
-      return `<span class="md-line${zenClass} font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-t border-t border-x border-indigo-200 dark:border-indigo-800/50 mt-2 block"><span class="md-token">:::test</span> <span class="text-[10px] uppercase tracking-widest ml-2 opacity-70">Quiz Block Start</span></span>`;
+      inTestBlock = true;
+      return `<span class="md-line${zenClass} font-bold text-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20 px-2 rounded-t mt-1 block"><span class="md-token">:::test</span></span>`;
     }
-    if (/^:::$/.test(line)) {
-      return `<span class="md-line${zenClass} font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-b border-b border-x border-indigo-200 dark:border-indigo-800/50 mb-2 block"><span class="md-token">:::</span> <span class="text-[10px] uppercase tracking-widest ml-2 opacity-70">Quiz Block End</span></span>`;
+    if (/^:::$/.test(line) && inTestBlock) {
+      inTestBlock = false;
+      return `<span class="md-line${zenClass} font-bold text-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20 px-2 rounded-b mb-1 block"><span class="md-token">:::</span></span>`;
+    }
+    
+    if (inTestBlock) {
+      zenClass += " bg-indigo-50/50 dark:bg-indigo-900/20 px-2 block";
     }
 
     // List items
