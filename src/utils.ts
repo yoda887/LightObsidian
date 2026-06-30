@@ -68,13 +68,23 @@ export async function parseMarkdownToHtml(content: string, notes: Note[] = [], d
   // Parse standard Markdown
   let parsed = await marked.parse(content, { breaks: true, gfm: true });
   
-  // Replace Flashcards (Question :: Answer)
-  parsed = parsed.replace(/<p>(.+?)\s+::\s+(.+?)<\/p>/g, (match, q, a) => {
-    return `<p>${q} <span class="text-indigo-400 dark:text-indigo-600 font-bold mx-1">::</span> <span class="group relative inline-flex min-w-[2rem] bg-amber-100 dark:bg-amber-900/40 px-1.5 rounded-sm border-b-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap">${a}</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">...</span></span></p>`;
+  // Replace Flashcards (Question :: Answer or Question ::: Answer)
+  parsed = parsed.replace(/<p>(.+?)\s+(::|:::)\s+(.+?)<\/p>/g, (match, q, sep, a) => {
+    return `<p>${q} <span class="text-indigo-400 dark:text-indigo-600 font-bold mx-1">${sep}</span> <span class="group relative inline-flex min-w-[2rem] bg-amber-100 dark:bg-amber-900/40 px-1.5 rounded-sm border-b-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap">${a}</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">...</span></span></p>`;
   });
 
-  // Replace Cloze Deletions
-  parsed = parsed.replace(/\{\{(.*?)\}\}/g, '<span class="group relative inline-flex min-w-[2rem] bg-amber-100 dark:bg-amber-900/40 px-1.5 rounded-sm border-b-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap">$1</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">...</span></span>');
+  // Replace Multi-line Flashcards (?)
+  // Handle both single paragraph with <br> and separate paragraphs
+  const renderMultiline = (q: string, a: string) => `<div class="bg-indigo-50/50 dark:bg-indigo-900/10 p-3 rounded my-4 border border-indigo-100 dark:border-indigo-800/50"><div class="font-semibold text-slate-800 dark:text-zinc-200 mb-2">${q}</div><div class="group relative inline-flex w-full bg-amber-100 dark:bg-amber-900/40 p-2 rounded border-l-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap w-full">${a}</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-sm font-bold tracking-widest">Наведите для ответа...</span></div></div>`;
+  
+  parsed = parsed.replace(/<p>([\s\S]+?)<\/p>\s*<p>\?<\/p>\s*<p>([\s\S]+?)<\/p>/g, (match, q, a) => renderMultiline(q, a));
+  parsed = parsed.replace(/<p>([\s\S]+?)<br>\?<br>([\s\S]+?)<\/p>/g, (match, q, a) => renderMultiline(q, a));
+
+  // Replace Cloze Deletions ({{cloze}} and ==cloze==)
+  parsed = parsed.replace(/\{\{(.*?)\}\}|==(.*?)==/g, (match, cloze1, cloze2) => {
+    const text = cloze1 || cloze2;
+    return `<span class="group relative inline-flex min-w-[2rem] bg-amber-100 dark:bg-amber-900/40 px-1.5 rounded-sm border-b-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap">${text}</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">...</span></span>`;
+  });
 
   
   // Replace tags: #word with special statuses

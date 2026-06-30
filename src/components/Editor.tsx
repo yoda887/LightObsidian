@@ -660,7 +660,7 @@ export default function Editor({
                   className="fixed inset-0 z-10" 
                   onClick={() => setShowCardDropdown(false)} 
                 />
-                <div className="absolute right-0 mt-1 w-44 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg shadow-xl py-1 z-20 flex flex-col gap-0.5">
+                <div className="absolute right-0 mt-1 w-56 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg shadow-xl py-1 z-20 flex flex-col gap-0.5">
                   <button
                     onClick={() => {
                       handleInsertFlashcard();
@@ -669,17 +669,47 @@ export default function Editor({
                     className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 font-medium flex items-center gap-2 cursor-pointer transition-colors"
                   >
                     <FileText className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>Вопрос :: Ответ</span>
+                    <span>Однострочная (::)</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      insertMarkdown("\n\nВопрос ::: Ответ");
+                      setShowCardDropdown(false);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 font-medium flex items-center gap-2 cursor-pointer transition-colors"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Двусторонняя (:::)</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      insertMarkdown("\n\nВопрос\n?\nОтвет\n\n");
+                      setShowCardDropdown(false);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 font-medium flex items-center gap-2 cursor-pointer transition-colors"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Многострочная (?)</span>
                   </button>
                   <button
                     onClick={() => {
                       insertMarkdown("{{", "}}");
                       setShowCardDropdown(false);
                     }}
-                    className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 font-medium flex items-center gap-2 cursor-pointer transition-colors"
+                    className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 font-medium flex items-center gap-2 cursor-pointer transition-colors border-t border-slate-100 dark:border-zinc-800"
                   >
                     <Tag className="w-3.5 h-3.5 text-indigo-500" />
                     <span>Пропуск {"{{...}}"}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      insertMarkdown("==", "==");
+                      setShowCardDropdown(false);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 font-medium flex items-center gap-2 cursor-pointer transition-colors"
+                  >
+                    <Tag className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Пропуск (==...==)</span>
                   </button>
                   <button
                     onClick={() => {

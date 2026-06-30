@@ -9,12 +9,12 @@ export interface Flashcard {
   nextReview: number;     // Timestamp
   interval: number;       // In days
   ease: number;           // Multiplier
-  type?: "standard" | "cloze" | "mcq";
+  type?: "standard" | "cloze" | "mcq" | "reversed" | "multiline";
   options?: string[];
 }
 
-// Regex to find traditional: Question :: Answer \n <!--SR:2024-01-01,1,2.5-->
-const CARD_REGEX = /^(.+?)[ \t]*::[ \t]*(.+?)(?:\n<!--SR:([^,]+),([^,]+),([^>]+)-->)?$/gm;
+// Regex to find traditional: Question :: Answer or Question ::: Answer \n <!--SR:2024-01-01,1,2.5-->
+const CARD_REGEX = /^(.+?)[ \t]*(::|:::)[ \t]*(.+?)(?:\r?\n<!--SR:([^,]+),([^,]+),([^>]+)-->)?$/gm;
 
 // Helper to parse YAML cards from note content
 export function extractYamlCards(note: Note): Flashcard[] {
@@ -306,16 +306,17 @@ export function extractFlashcards(notes: Note[]): Flashcard[] {
 
       const fullMatch = match[0];
       const question = match[1].trim();
-      const answer = match[2].trim();
+      const separator = match[2];
+      const answer = match[3].trim();
       
       let nextReview = 0;
       let interval = 0;
       let ease = 2.5;
 
-      if (match[3] && match[4] && match[5]) {
-        nextReview = new Date(match[3]).getTime();
-        interval = parseFloat(match[4]);
-        ease = parseFloat(match[5]);
+      if (match[4] && match[5] && match[6]) {
+        nextReview = new Date(match[4]).getTime();
+        interval = parseFloat(match[5]);
+        ease = parseFloat(match[6]);
       }
 
       cards.push({
@@ -326,17 +327,67 @@ export function extractFlashcards(notes: Note[]): Flashcard[] {
         fullMatch,
         nextReview,
         interval,
-        ease
+        ease,
+        type: separator === ':::' ? 'reversed' : 'standard'
       });
+      
+      if (separator === ':::') {
+        cards.push({
+          noteId: note.id,
+          noteTitle: note.title,
+          question: answer,
+          answer: question,
+          fullMatch,
+          nextReview,
+          interval,
+          ease,
+          type: 'reversed'
+        });
+      }
+    }
+
+    // 3.5. Extract Multi-line cards (?)
+    const blocks = cleanContent.substring(fmLength).split(/\r?\n\r?\n/);
+    for (const block of blocks) {
+      if (block.match(/\r?\n\?\r?\n/)) {
+        const parts = block.split(/\r?\n\?\r?\n/);
+        if (parts.length === 2) {
+          const question = parts[0].trim();
+          let answerRaw = parts[1].trim();
+          let nextReview = 0;
+          let interval = 0;
+          let ease = 2.5;
+
+          const srMatch = answerRaw.match(/\r?\n<!--SR:([^,]+),([^,]+),([^>]+)-->$/);
+          if (srMatch) {
+            nextReview = new Date(srMatch[1]).getTime();
+            interval = parseFloat(srMatch[2]);
+            ease = parseFloat(srMatch[3]);
+            answerRaw = answerRaw.replace(/\r?\n<!--SR:([^,]+),([^,]+),([^>]+)-->$/, '').trim();
+          }
+
+          cards.push({
+            noteId: note.id,
+            noteTitle: note.title,
+            question,
+            answer: answerRaw,
+            fullMatch: block,
+            nextReview,
+            interval,
+            ease,
+            type: "multiline"
+          });
+        }
+      }
     }
 
     // 4. Extract cloze deletions line-by-line from cleanContent
     const lines = cleanContent.substring(fmLength).split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (line.includes("::")) continue;
+      if (line.includes("::") || line === "?") continue;
 
-      const hasCloze = /\{\{[^{}]+\}\}/.test(line);
+      const hasCloze = /\{\{[^{}]+\}\}|==[^=]+==/.test(line);
       if (!hasCloze) continue;
 
       let nextReview = 0;
@@ -354,8 +405,8 @@ export function extractFlashcards(notes: Note[]): Flashcard[] {
         }
       }
 
-      const question = line.replace(/\{\{[^{}]+\}\}/g, "[...]");
-      const answer = line.replace(/\{\{([^{}]+)\}\}/g, "**$1**");
+      const question = line.replace(/\{\{[^{}]+\}\}|==[^=]+==/g, "[...]");
+      const answer = line.replace(/\{\{([^{}]+)\}\}/g, "**$1**").replace(/==([^=]+)==/g, "**$1**");
       const fullMatch = srLine ? `${line}\n${srLine}` : line;
 
       cards.push({
@@ -436,8 +487,9 @@ export function updateFlashcardInContent(content: string, card: Flashcard, grade
     return content.replace(card.fullMatch, newCardStr);
   } else {
     const nextDateStr = nextDate.toISOString().split('T')[0];
-    const originalLine = card.fullMatch.split("\n")[0];
-    const newCardStr = `${originalLine}\n<!--SR:${nextDateStr},${newInterval},${newEase.toFixed(1)}-->`;
+    const newSrComment = `<!--SR:${nextDateStr},${newInterval},${newEase.toFixed(1)}-->`;
+    const cleanMatch = card.fullMatch.replace(/\r?\n<!--SR:[^>]+-->$/, '');
+    const newCardStr = `${cleanMatch}\n${newSrComment}`;
     return content.replace(card.fullMatch, newCardStr);
   }
 }

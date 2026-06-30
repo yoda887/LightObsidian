@@ -150,18 +150,34 @@ export default function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
             </h3>
             <div className="text-sm text-slate-600 dark:text-zinc-400 space-y-4">
               <div>
-                <strong className="text-slate-800 dark:text-zinc-200 block mb-1">1. Standard Flashcards (Вопрос-Ответ)</strong>
+                <strong className="text-slate-800 dark:text-zinc-200 block mb-1">1. Однострочные карточки (Вопрос-Ответ)</strong>
                 <p className="mb-2">Create standard question-answer pairs using the double-colon syntax.</p>
                 <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded border border-slate-200 dark:border-zinc-800">
-                  <code className="text-sm font-mono text-indigo-600 dark:text-indigo-400">What is the capital of France? :: Paris</code>
+                  <code className="text-sm font-mono text-indigo-600 dark:text-indigo-400">Столица Франции? :: Париж</code>
                 </div>
               </div>
 
               <div>
-                <strong className="text-slate-800 dark:text-zinc-200 block mb-1">2. Cloze Deletions (Заполнение пропусков)</strong>
-                <p className="mb-2">Hide specific words in a sentence by wrapping them in double curly braces. During review, you'll be asked to recall the hidden word.</p>
+                <strong className="text-slate-800 dark:text-zinc-200 block mb-1">2. Двусторонние карточки (Reversed)</strong>
+                <p className="mb-2">При использовании тройного двоеточия карточка будет проверяться в обе стороны (идеально для изучения языков).</p>
                 <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded border border-slate-200 dark:border-zinc-800">
-                  <code className="text-sm font-mono text-indigo-600 dark:text-indigo-400">The capital of France is {"{{Paris}}"}.</code>
+                  <code className="text-sm font-mono text-indigo-600 dark:text-indigo-400">Apple ::: Яблоко</code>
+                </div>
+              </div>
+
+              <div>
+                <strong className="text-slate-800 dark:text-zinc-200 block mb-1">3. Многострочные карточки (Multiline)</strong>
+                <p className="mb-2">Используйте знак вопроса <code>?</code> на отдельной строке между вопросом и многострочным ответом.</p>
+                <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded border border-slate-200 dark:border-zinc-800">
+                  <code className="text-sm font-mono text-indigo-600 dark:text-indigo-400 whitespace-pre-wrap">Три закона Азимова?{"\n"}?{"\n"}1. Не навреди...{"\n"}2. Повинуйся...</code>
+                </div>
+              </div>
+
+              <div>
+                <strong className="text-slate-800 dark:text-zinc-200 block mb-1">4. Заполнение пропусков (Cloze Deletions)</strong>
+                <p className="mb-2">Hide specific words in a sentence by wrapping them in double curly braces or double equals signs.</p>
+                <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded border border-slate-200 dark:border-zinc-800">
+                  <code className="text-sm font-mono text-indigo-600 dark:text-indigo-400">The capital of France is {"{{Paris}}"} and UK is ==London==.</code>
                 </div>
               </div>
               
