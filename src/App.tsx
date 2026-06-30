@@ -296,7 +296,7 @@ export default function App() {
 if (savedHandle) {
   try {
     // Используем queryPermission, он не требует клика
-    const perm = await savedHandle.queryPermission({ mode: "readwrite" });
+    const perm = await (savedHandle as any).queryPermission({ mode: "readwrite" });
     
     if (perm === "granted") {
       setVaultHandle(savedHandle);

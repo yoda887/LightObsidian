@@ -42,8 +42,10 @@ interface EditorProps {
   notes: Note[];
   mode: "edit" | "preview" | "split" | "dynamic";
   settings: AppSettings;
+  isZenMode?: boolean;
   onUpdateNote: (id: string, updates: Partial<Note>) => void;
   onSelectNote: (id: string) => void;
+  onWikilinkClick?: (noteTitle: string) => void;
   onExtractNote?: (
     parentNoteId: string,
     extractText: string,
