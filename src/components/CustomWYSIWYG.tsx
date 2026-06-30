@@ -50,15 +50,15 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
     // Quiz / Test Blocks (Start and End tags)
     if (/^:::test$/.test(line)) {
       inTestBlock = true;
-      return `<span class="md-line${zenClass} font-bold text-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20 px-2 rounded-t mt-1 block"><span class="md-token">:::test</span></span>`;
+      return `<span class="md-line${zenClass} font-bold text-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20 px-2 rounded-t mt-1"><span class="md-token">:::test</span></span>`;
     }
     if (/^:::$/.test(line) && inTestBlock) {
       inTestBlock = false;
-      return `<span class="md-line${zenClass} font-bold text-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20 px-2 rounded-b mb-1 block"><span class="md-token">:::</span></span>`;
+      return `<span class="md-line${zenClass} font-bold text-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20 px-2 rounded-b mb-1"><span class="md-token">:::</span></span>`;
     }
     
     if (inTestBlock) {
-      zenClass += " bg-indigo-50/50 dark:bg-indigo-900/20 px-2 block";
+      zenClass += " bg-indigo-50/50 dark:bg-indigo-900/20 px-2";
     }
 
     // List items
