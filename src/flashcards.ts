@@ -11,10 +11,11 @@ export interface Flashcard {
   ease: number;           // Multiplier
   type?: "standard" | "cloze" | "mcq" | "reversed" | "multiline";
   options?: string[];
+  isReverseDirection?: boolean;
 }
 
-// Regex to find traditional: Question :: Answer or Question ::: Answer \n <!--SR:2024-01-01,1,2.5-->
-const CARD_REGEX = /^(.+?)[ \t]*(::|:::)[ \t]*(.+?)(?:\r?\n<!--SR:([^,]+),([^,]+),([^>]+)-->)?$/gm;
+// Regex to find traditional: Question :: Answer or Question ::: Answer \n <!--SR:2024-01-01,1,2.5!2024-01-01,1,2.5-->
+const CARD_REGEX = /^(.+?)[ \t]*(::|:::)[ \t]*(.+?)(?:\r?\n<!--SR:([^>]+)-->)?$/gm;
 
 // Helper to parse YAML cards from note content
 export function extractYamlCards(note: Note): Flashcard[] {
@@ -312,11 +313,25 @@ export function extractFlashcards(notes: Note[]): Flashcard[] {
       let nextReview = 0;
       let interval = 0;
       let ease = 2.5;
+      let nextReviewRev = 0;
+      let intervalRev = 0;
+      let easeRev = 2.5;
 
-      if (match[4] && match[5] && match[6]) {
-        nextReview = new Date(match[4]).getTime();
-        interval = parseFloat(match[5]);
-        ease = parseFloat(match[6]);
+      if (match[4]) {
+        const srParts = match[4].split('!');
+        const fwd = srParts[0]?.split(',') || [];
+        if (fwd.length === 3) {
+          nextReview = new Date(fwd[0]).getTime();
+          interval = parseFloat(fwd[1]);
+          ease = parseFloat(fwd[2]);
+        }
+        
+        const rev = srParts[1]?.split(',') || [];
+        if (rev.length === 3) {
+          nextReviewRev = new Date(rev[0]).getTime();
+          intervalRev = parseFloat(rev[1]);
+          easeRev = parseFloat(rev[2]);
+        }
       }
 
       cards.push({
@@ -338,10 +353,11 @@ export function extractFlashcards(notes: Note[]): Flashcard[] {
           question: answer,
           answer: question,
           fullMatch,
-          nextReview,
-          interval,
-          ease,
-          type: 'reversed'
+          nextReview: nextReviewRev,
+          interval: intervalRev,
+          ease: easeRev,
+          type: 'reversed',
+          isReverseDirection: true
         });
       }
     }
@@ -487,10 +503,38 @@ export function updateFlashcardInContent(content: string, card: Flashcard, grade
     return content.replace(card.fullMatch, newCardStr);
   } else {
     const nextDateStr = nextDate.toISOString().split('T')[0];
-    const newSrComment = `<!--SR:${nextDateStr},${newInterval},${newEase.toFixed(1)}-->`;
-    const cleanMatch = card.fullMatch.replace(/\r?\n<!--SR:[^>]+-->$/, '');
-    const newCardStr = `${cleanMatch}\n${newSrComment}`;
-    return content.replace(card.fullMatch, newCardStr);
+    const newSched = `${nextDateStr},${newInterval},${newEase.toFixed(1)}`;
+
+    if (card.type === "reversed") {
+      let existingSr = "";
+      const srMatch = card.fullMatch.match(/<!--SR:([^>]+)-->$/);
+      if (srMatch) existingSr = srMatch[1];
+      
+      let fwd = "", rev = "";
+      if (existingSr) {
+        const parts = existingSr.split('!');
+        fwd = parts[0] || "";
+        rev = parts[1] || "";
+      }
+      
+      if (card.isReverseDirection) {
+        rev = newSched;
+        if (!fwd) fwd = `${nextDateStr},1,2.5`;
+      } else {
+        fwd = newSched;
+        if (!rev) rev = `${nextDateStr},1,2.5`;
+      }
+      
+      const newSrComment = `<!--SR:${fwd}!${rev}-->`;
+      const cleanMatch = card.fullMatch.replace(/\r?\n<!--SR:[^>]+-->$/, '');
+      const newCardStr = `${cleanMatch}\n${newSrComment}`;
+      return content.replace(card.fullMatch, newCardStr);
+    } else {
+      const newSrComment = `<!--SR:${newSched}-->`;
+      const cleanMatch = card.fullMatch.replace(/\r?\n<!--SR:[^>]+-->$/, '');
+      const newCardStr = `${cleanMatch}\n${newSrComment}`;
+      return content.replace(card.fullMatch, newCardStr);
+    }
   }
 }
 

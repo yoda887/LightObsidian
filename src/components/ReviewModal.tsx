@@ -100,8 +100,11 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
             </div>
           ) : (
             <div className="w-full h-full flex flex-col">
-              <div className="text-xs text-slate-400 dark:text-zinc-500 mb-2 text-center uppercase tracking-widest font-semibold">
-                Card {currentIndex + 1} of {sessionCards.length}
+              <div className="text-xs text-slate-400 dark:text-zinc-500 mb-2 text-center uppercase tracking-widest font-semibold flex items-center justify-center gap-2">
+                <span>Card {currentIndex + 1} of {sessionCards.length}</span>
+                {card.isReverseDirection && (
+                  <span className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">Reversed</span>
+                )}
               </div>
               
               <div className="flex justify-center mb-6">
@@ -118,7 +121,7 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
               </div>
               
               <div className="flex-1 flex flex-col justify-center">
-                <div className="text-lg md:text-xl font-medium text-slate-800 dark:text-zinc-100 text-center leading-relaxed">
+                <div className="text-lg md:text-xl font-medium text-slate-800 dark:text-zinc-100 text-center leading-relaxed whitespace-pre-wrap">
                   {card.type === "cloze" && showAnswer ? renderClozeAnswer(card.answer) : card.question}
                 </div>
 
@@ -167,7 +170,7 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
                   showAnswer && (
                     <>
                       <hr className="my-8 border-slate-200 dark:border-zinc-800 w-1/2 mx-auto" />
-                      <div className="text-base md:text-lg text-slate-600 dark:text-zinc-300 text-center leading-relaxed animate-in fade-in slide-in-from-bottom-4 duration-300">
+                      <div className="text-base md:text-lg text-slate-600 dark:text-zinc-300 text-center leading-relaxed animate-in fade-in slide-in-from-bottom-4 duration-300 whitespace-pre-wrap">
                         {card.answer}
                       </div>
                     </>
