@@ -148,6 +148,9 @@ export default function App() {
 
   const [vaultPendingHandle, setVaultPendingHandle] = useState<any>(null);
 
+  const [isVaultLoading, setIsVaultLoading] = useState<boolean>(false);
+  const [isVaultSaving, setIsVaultSaving] = useState<boolean>(false);
+
   const getFilesRecursively = async (dirHandle: any, currentPath: string = "", existingNotes: Note[] = []): Promise<{notes: Note[], folders: string[]}> => {
     let notesResult: Note[] = [];
     let foldersResult: string[] = [];
@@ -199,10 +202,12 @@ export default function App() {
       const handle = await window.showDirectoryPicker();
       setVaultHandle(handle);
       await saveVaultHandle(handle);
+      
+      setIsVaultLoading(true); // Включаем спиннер
+      
       const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(handle);
       
       setFolders(loadedFolders);
-
       if (loadedNotes.length > 0) {
         setNotes(loadedNotes);
         setCurrentNoteId(loadedNotes[0].id);
@@ -214,6 +219,8 @@ export default function App() {
       }
     } catch (err) {
       console.error("Failed to open vault:", err);
+    } finally {
+      setIsVaultLoading(false); // Выключаем спиннер в любом случае
     }
   };
 
