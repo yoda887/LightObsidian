@@ -5,7 +5,8 @@
 
 import { useState } from "react";
 import { Note } from "../types";
-import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock } from "lucide-react";
+//import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock } from "lucide-react";
+import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock, AlertTriangle } from "lucide-react";
 
 interface SidebarProps {
   notes: Note[];
@@ -21,6 +22,10 @@ interface SidebarProps {
   vaultName?: string;
   onOpenDailyNote: () => void;
   onOpenRandomNote: () => void;
+  vaultName?: string;
+  isVaultPending?: boolean;
+  onRestoreVaultAccess?: () => void;
+  onOpenDailyNote: () => void;
 }
 
 interface TreeNode {
@@ -213,6 +218,8 @@ export default function Sidebar({
   onToggleTheme,
   onOpenVault,
   vaultName,
+  isVaultPending,
+  onRestoreVaultAccess,
   onOpenDailyNote,
   onOpenRandomNote
 }: SidebarProps) {
@@ -366,16 +373,28 @@ export default function Sidebar({
       {/* Vault Footer Panel */}
       <div className="p-3 border-t border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950">
         {onOpenVault && (
-          <button
-            onClick={onOpenVault}
-            className="w-full flex items-center space-x-2 px-3 py-2 bg-slate-200 dark:bg-zinc-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-slate-700 dark:text-zinc-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition-colors cursor-pointer text-left"
-            title="Open Local Folder (Vault)"
-          >
-            <BookOpen className="w-4 h-4 shrink-0" />
-            <span className="text-xs font-semibold truncate">
-              {vaultName || "Open Vault..."}
-            </span>
-          </button>
+          <div className="w-full flex items-center justify-between bg-slate-200 dark:bg-zinc-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 rounded-lg transition-colors group">
+            <button
+              onClick={onOpenVault}
+              className="flex-1 flex items-center space-x-2 px-3 py-2 text-slate-700 dark:text-zinc-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 cursor-pointer text-left truncate rounded-l-lg outline-none"
+              title="Open Local Folder (Vault)"
+            >
+              <BookOpen className="w-4 h-4 shrink-0" />
+              <span className="text-xs font-semibold truncate">
+                {vaultName || "Open Vault..."}
+              </span>
+            </button>
+            
+            {isVaultPending && onRestoreVaultAccess && (
+              <button
+                onClick={onRestoreVaultAccess}
+                className="px-3 py-2 text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300 cursor-pointer transition-colors rounded-r-lg"
+                title="Восстановить доступ к локальной папке"
+              >
+                <AlertTriangle className="w-4 h-4 shrink-0 animate-pulse" />
+              </button>
+            )}
+          </div>
         )}
       </div>
     </aside>
