@@ -69,7 +69,7 @@ export async function parseMarkdownToHtml(content: string, notes: Note[] = [], d
   const tests: string[] = [];
   content = content.replace(/^:::test\s*\n([\s\S]*?)\n:::$/gm, (match, inner) => {
     tests.push(inner);
-    return `\n\n__TEST_BLOCK_${tests.length - 1}__\n\n`;
+    return `\n\n@@TEST_BLOCK_${tests.length - 1}@@\n\n`;
   });
 
   // Parse standard Markdown
@@ -79,7 +79,7 @@ export async function parseMarkdownToHtml(content: string, notes: Note[] = [], d
   for (let i = 0; i < tests.length; i++) {
     const innerHtml = await marked.parse(tests[i], { breaks: true, gfm: true });
     const decoratedHtml = `<div class="bg-indigo-50/50 dark:bg-indigo-900/10 p-5 rounded-xl border-2 border-indigo-200 dark:border-indigo-800/50 my-6 shadow-sm"><div class="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-3 flex items-center gap-1"><span class="text-base">📋</span> Quiz / Test</div><div class="test-content space-y-2">${innerHtml}</div></div>`;
-    parsed = parsed.replace(`<p>__TEST_BLOCK_${i}__</p>`, decoratedHtml).replace(`__TEST_BLOCK_${i}__`, decoratedHtml);
+    parsed = parsed.replace(`<p>@@TEST_BLOCK_${i}@@</p>`, decoratedHtml).replace(`@@TEST_BLOCK_${i}@@`, decoratedHtml);
   }
   
   // Replace Flashcards (Question :: Answer or Question ::: Answer)

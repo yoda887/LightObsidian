@@ -45,6 +45,14 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
     if (quoteMatch) {
       return `<span class="md-line md-quote${zenClass}"><span class="md-token">&gt; </span>${quoteMatch[1]}</span>`;
     }
+    
+    // Quiz / Test Blocks (Start and End tags)
+    if (/^:::test$/.test(line)) {
+      return `<span class="md-line${zenClass} font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-t border-t border-x border-indigo-200 dark:border-indigo-800/50 mt-2 block"><span class="md-token">:::test</span> <span class="text-[10px] uppercase tracking-widest ml-2 opacity-70">Quiz Block Start</span></span>`;
+    }
+    if (/^:::$/.test(line)) {
+      return `<span class="md-line${zenClass} font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-b border-b border-x border-indigo-200 dark:border-indigo-800/50 mb-2 block"><span class="md-token">:::</span> <span class="text-[10px] uppercase tracking-widest ml-2 opacity-70">Quiz Block End</span></span>`;
+    }
 
     // List items
     const listMatch = line.match(/^-\s+(.*)$/);
