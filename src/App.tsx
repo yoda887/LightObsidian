@@ -241,29 +241,31 @@ export default function App() {
   }, [currentNoteId, history, historyIndex]);
 
   const handleRestoreVaultAccess = async () => {
-  if (!vaultPendingHandle) return;
-  try {
-    // Вот теперь, по клику юзера, браузер разрешит показать окно подтверждения
-    const perm = await vaultPendingHandle.requestPermission({ mode: "readwrite" });
-    if (perm === "granted") {
-      setVaultHandle(vaultPendingHandle);
-      setVaultPendingHandle(null);
-      
-      // Загружаем данные из папки
-      const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(vaultPendingHandle);
-      setFolders(loadedFolders);
-      if (loadedNotes.length > 0) {
-        setNotes(loadedNotes);
-        setCurrentNoteId(loadedNotes[0].id);
-        setOpenNoteIds([loadedNotes[0].id]);
-        await clearNotes();
-        for (const n of loadedNotes) await putNote(n);
+    if (!vaultPendingHandle) return;
+    try {
+      const perm = await vaultPendingHandle.requestPermission({ mode: "readwrite" });
+      if (perm === "granted") {
+        setVaultHandle(vaultPendingHandle);
+        setVaultPendingHandle(null);
+        
+        setIsVaultLoading(true); // <--- ВКЛЮЧАЕМ СПИННЕР
+        
+        const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(vaultPendingHandle);
+        setFolders(loadedFolders);
+        if (loadedNotes.length > 0) {
+          setNotes(loadedNotes);
+          setCurrentNoteId(loadedNotes[0].id);
+          setOpenNoteIds([loadedNotes[0].id]);
+          await clearNotes();
+          for (const n of loadedNotes) await putNote(n);
+        }
       }
+    } catch (err) {
+      console.error("Пользователь отменил восстановление доступа", err);
+    } finally {
+      setIsVaultLoading(false); // <--- ВЫКЛЮЧАЕМ СПИННЕР
     }
-  } catch (err) {
-    console.error("Пользователь отменил восстановление доступа", err);
-  }
-};
+  };
 
   const handleGoBack = () => {
     if (historyIndex > 0) {
@@ -414,6 +416,7 @@ if (savedHandle) {
     const syncVault = async () => {
       if (isSyncing || !vaultHandle) return;
       isSyncing = true;
+      setIsVaultLoading(true); // <--- ВКЛЮЧАЕМ СПИННЕР
       try {
         // We pass the current notes in memory so we can skip re-reading files that haven't changed
         const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(vaultHandle, "", notesRef.current);
@@ -426,6 +429,7 @@ if (savedHandle) {
       } catch (err) {
         console.error("Failed to sync vault", err);
       } finally {
+        setIsVaultLoading(false); // <--- ВЫКЛЮЧАЕМ СПИННЕР
         isSyncing = false;
       }
     };
@@ -494,6 +498,7 @@ if (savedHandle) {
     putNote(newNote).catch(console.error);
 
     if (vaultHandle) {
+      setIsVaultSaving(true); // <--- ВКЛЮЧАЕМ
       try {
         const fileHandle = await vaultHandle.getFileHandle(filename, { create: true });
         const writable = await fileHandle.createWritable();
@@ -501,6 +506,8 @@ if (savedHandle) {
         await writable.close();
       } catch (err) {
         console.error("Failed to create file in vault", err);
+      } finally {
+        setIsVaultSaving(false); // <--- ВЫКЛЮЧАЕМ
       }
     }
 
@@ -528,11 +535,14 @@ if (savedHandle) {
       deleteNote(id).catch(console.error);
       
       if (vaultHandle && noteToDelete) {
+        setIsVaultSaving(true); // <--- ВКЛЮЧАЕМ
         try {
           const dirHandle = await getDirHandleByPath(vaultHandle, noteToDelete.path);
           await dirHandle.removeEntry(`${noteToDelete.title.trim()}.md`);
         } catch (err) {
           console.error("Failed to delete from vault", err);
+        } finally {
+          setIsVaultSaving(false); // <--- ВЫКЛЮЧАЕМ
         }
       }
       
@@ -613,6 +623,7 @@ if (savedHandle) {
     putNote(updatedNote).catch(console.error);
 
     if (vaultHandle && updatedNote && oldNote) {
+      setIsVaultSaving(true); // <--- ВКЛЮЧАЕМ
       try {
         const dirHandle = await getDirHandleByPath(vaultHandle, updatedNote.path);
         
@@ -632,6 +643,8 @@ if (savedHandle) {
         await writable.close();
       } catch (err) {
         console.error("Failed to save to vault", err);
+      } finally {
+        setIsVaultSaving(false); // <--- ВЫКЛЮЧАЕМ
       }
     }
   };
@@ -943,6 +956,7 @@ if (savedHandle) {
           onOpenVault={openVault}
           vaultName={vaultHandle?.name || vaultPendingHandle?.name}
           isVaultPending={!!vaultPendingHandle}
+          isVaultLoading={isVaultLoading}
           onRestoreVaultAccess={handleRestoreVaultAccess}
           onOpenDailyNote={handleOpenDailyNote}
           onOpenRandomNote={handleOpenRandomNote}
@@ -1085,8 +1099,12 @@ if (savedHandle) {
       <div className="h-6 shrink-0 bg-slate-100 dark:bg-zinc-900 border-t border-slate-200 dark:border-zinc-800 flex items-center justify-between px-3 text-[10px] text-slate-500 dark:text-zinc-400 font-medium select-none">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
-            <div className={`w-1.5 h-1.5 rounded-full ${vaultHandle ? 'bg-emerald-500' : 'bg-amber-500'} animate-pulse`}></div>
-            {vaultHandle ? 'CONNECTED: FOLDER VAULT' : 'CONNECTED: LOCAL-CACHE'}
+            <div className={`w-1.5 h-1.5 rounded-full ${vaultHandle ? 'bg-emerald-500' : 'bg-amber-500'} ${(isVaultSaving || isVaultLoading) ? 'animate-ping' : 'animate-pulse'}`}></div>
+            {vaultHandle ? (
+               isVaultSaving ? 'ЗАПИСЬ НА ДИСК...' :
+               isVaultLoading ? 'ЧТЕНИЕ ДАННЫХ...' :
+               'CONNECTED: FOLDER VAULT'
+            ) : 'CONNECTED: LOCAL-CACHE'}
           </div>
           <div className="opacity-50">UTF-8</div>
         </div>
