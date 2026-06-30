@@ -934,7 +934,9 @@ if (savedHandle) {
           darkMode={darkMode}
           onToggleTheme={handleToggleTheme}
           onOpenVault={openVault}
-          vaultName={vaultHandle?.name}
+          vaultName={vaultHandle?.name || vaultPendingHandle?.name}
+          isVaultPending={!!vaultPendingHandle}
+          onRestoreVaultAccess={handleRestoreVaultAccess}
           onOpenDailyNote={handleOpenDailyNote}
           onOpenRandomNote={handleOpenRandomNote}
         />
