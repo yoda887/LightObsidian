@@ -135,6 +135,43 @@ export default function App() {
     }
   }, [darkMode]);
 
+  const saveTimeoutRef = React.useRef<any>(null);
+  const pendingWritesRef = React.useRef<Map<string, { note: Note; oldTitle: string | null }>>(new Map());
+
+  const flushVaultWrites = async () => {
+    if (!vaultHandle) return;
+    setIsVaultSaving(true);
+    
+    // Process all pending writes sequentially to avoid locks
+    const writes = Array.from(pendingWritesRef.current.values()) as Array<{ note: Note; oldTitle: string | null }>;
+    pendingWritesRef.current.clear(); // Clear immediately so new writes can queue
+
+    for (const { note, oldTitle } of writes) {
+      try {
+        const dirHandle = await getDirHandleByPath(vaultHandle, note.path);
+        
+        if (oldTitle && oldTitle !== note.title.trim()) {
+          const oldFilename = `${oldTitle}.md`;
+          try {
+            await dirHandle.removeEntry(oldFilename);
+          } catch(e) {
+            console.error("Could not remove old file during rename", e);
+          }
+        }
+        
+        const filename = `${note.title.trim()}.md`;
+        const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(note.content);
+        await writable.close();
+      } catch (err) {
+        console.error("Failed to save to vault", err);
+      }
+    }
+    
+    setIsVaultSaving(false);
+  };
+
   const getDirHandleByPath = async (rootHandle: any, pathStr: string | undefined) => {
     if (!pathStr) return rootHandle;
     const parts = pathStr.split('/');
@@ -623,29 +660,20 @@ if (savedHandle) {
     putNote(updatedNote).catch(console.error);
 
     if (vaultHandle && updatedNote && oldNote) {
-      setIsVaultSaving(true); // <--- ВКЛЮЧАЕМ
-      try {
-        const dirHandle = await getDirHandleByPath(vaultHandle, updatedNote.path);
-        
-        if (filenameChanged && oldNote.title) {
-          const oldFilename = `${oldNote.title.trim()}.md`;
-          try {
-            await dirHandle.removeEntry(oldFilename);
-          } catch(e) {
-            console.error("Could not remove old file during rename", e);
-          }
-        }
-        
-        const filename = `${updatedNote.title.trim()}.md`;
-        const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
-        const writable = await fileHandle.createWritable();
-        await writable.write(updatedNote.content);
-        await writable.close();
-      } catch (err) {
-        console.error("Failed to save to vault", err);
-      } finally {
-        setIsVaultSaving(false); // <--- ВЫКЛЮЧАЕМ
+      // Find if we already have a pending write for this note (by looking at oldNote.id)
+      let originalTitle = filenameChanged ? oldNote.title.trim() : null;
+      if (pendingWritesRef.current.has(oldNote.id)) {
+         originalTitle = pendingWritesRef.current.get(oldNote.id)!.oldTitle || originalTitle;
+         pendingWritesRef.current.delete(oldNote.id); // remove old ID from queue
       }
+      
+      pendingWritesRef.current.set(updatedNote.id, {
+        note: updatedNote,
+        oldTitle: originalTitle
+      });
+
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = setTimeout(flushVaultWrites, 1000);
     }
   };
 
