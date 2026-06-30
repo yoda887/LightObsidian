@@ -15,7 +15,7 @@ export interface Flashcard {
 }
 
 // Regex to find traditional: Question :: Answer or Question ::: Answer \n <!--SR:2024-01-01,1,2.5!2024-01-01,1,2.5-->
-const CARD_REGEX = /^(.+?)[ \t]*(::|:::)[ \t]*(.+?)(?:\r?\n<!--SR:([^>]+)-->)?$/gm;
+const CARD_REGEX = /^(.+?)[ \t]*(:::|::)[ \t]*(.+?)(?:\r?\n<!--SR:([^>]+)-->)?$/gm;
 
 // Helper to parse YAML cards from note content
 export function extractYamlCards(note: Note): Flashcard[] {
@@ -362,24 +362,40 @@ export function extractFlashcards(notes: Note[]): Flashcard[] {
       }
     }
 
-    // 3.5. Extract Multi-line cards (?)
+    // 3.5. Extract Multi-line cards (? and ??)
     const blocks = cleanContent.substring(fmLength).split(/\r?\n\r?\n/);
     for (const block of blocks) {
-      if (block.match(/\r?\n\?\r?\n/)) {
-        const parts = block.split(/\r?\n\?\r?\n/);
+      const mlMatch = block.match(/\r?\n(\?\?|\?)\r?\n/);
+      if (mlMatch) {
+        const separator = mlMatch[1];
+        const parts = block.split(/\r?\n(?:\?\?|\?)\r?\n/);
         if (parts.length === 2) {
           const question = parts[0].trim();
           let answerRaw = parts[1].trim();
           let nextReview = 0;
           let interval = 0;
           let ease = 2.5;
+          let nextReviewRev = 0;
+          let intervalRev = 0;
+          let easeRev = 2.5;
 
-          const srMatch = answerRaw.match(/\r?\n<!--SR:([^,]+),([^,]+),([^>]+)-->$/);
+          const srMatch = answerRaw.match(/\r?\n<!--SR:([^>]+)-->$/);
           if (srMatch) {
-            nextReview = new Date(srMatch[1]).getTime();
-            interval = parseFloat(srMatch[2]);
-            ease = parseFloat(srMatch[3]);
-            answerRaw = answerRaw.replace(/\r?\n<!--SR:([^,]+),([^,]+),([^>]+)-->$/, '').trim();
+            const srParts = srMatch[1].split('!');
+            const fwd = srParts[0]?.split(',') || [];
+            if (fwd.length === 3) {
+              nextReview = new Date(fwd[0]).getTime();
+              interval = parseFloat(fwd[1]);
+              ease = parseFloat(fwd[2]);
+            }
+            
+            const rev = srParts[1]?.split(',') || [];
+            if (rev.length === 3) {
+              nextReviewRev = new Date(rev[0]).getTime();
+              intervalRev = parseFloat(rev[1]);
+              easeRev = parseFloat(rev[2]);
+            }
+            answerRaw = answerRaw.replace(/\r?\n<!--SR:([^>]+)-->$/, '').trim();
           }
 
           cards.push({
@@ -391,8 +407,23 @@ export function extractFlashcards(notes: Note[]): Flashcard[] {
             nextReview,
             interval,
             ease,
-            type: "multiline"
+            type: separator === '??' ? 'reversed' : 'multiline'
           });
+
+          if (separator === '??') {
+            cards.push({
+              noteId: note.id,
+              noteTitle: note.title,
+              question: answerRaw,
+              answer: question,
+              fullMatch: block,
+              nextReview: nextReviewRev,
+              interval: intervalRev,
+              ease: easeRev,
+              type: 'reversed',
+              isReverseDirection: true
+            });
+          }
         }
       }
     }
