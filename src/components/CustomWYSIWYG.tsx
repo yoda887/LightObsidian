@@ -51,19 +51,19 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
     if (/^:::test$/.test(line)) {
       inTestBlock = true;
       const visibility = (isZenMode && index !== activeLineIndex) ? " !h-0 !p-0 !m-0 !border-0 opacity-0 overflow-hidden" : " pt-1 pb-1";
-      return `<span class="md-line${zenClass} block w-full bg-indigo-50/70 dark:bg-indigo-900/30 border-l-[3px] border-indigo-500 font-mono text-indigo-400 opacity-70 text-[11px] uppercase tracking-widest pl-2 rounded-tr ${visibility}"><span class="md-token">:::test</span></span>`;
+      return `<span class="md-line${zenClass} inline-block w-full bg-indigo-50/70 dark:bg-indigo-900/30 border-l-[3px] border-indigo-500 font-mono text-indigo-400 opacity-70 text-[11px] uppercase tracking-widest pl-2 rounded-tr ${visibility}"><span class="md-token">:::test</span></span>`;
     }
     if (/^:::$/.test(line) && inTestBlock) {
       inTestBlock = false;
       const visibility = (isZenMode && index !== activeLineIndex) ? " !h-0 !p-0 !m-0 !border-0 opacity-0 overflow-hidden" : " pt-1 pb-1";
-      return `<span class="md-line${zenClass} block w-full bg-indigo-50/70 dark:bg-indigo-900/30 border-l-[3px] border-indigo-500 font-mono text-indigo-400 opacity-70 text-[11px] uppercase tracking-widest pl-2 rounded-bl ${visibility}"><span class="md-token">:::</span></span>`;
+      return `<span class="md-line${zenClass} inline-block w-full bg-indigo-50/70 dark:bg-indigo-900/30 border-l-[3px] border-indigo-500 font-mono text-indigo-400 opacity-70 text-[11px] uppercase tracking-widest pl-2 rounded-bl ${visibility}"><span class="md-token">:::</span></span>`;
     }
     
     if (inTestBlock) {
       if (line.match(/^-\s+\[[ x]\]/i)) {
-        zenClass += " !ml-0 block w-full bg-indigo-50/70 dark:bg-indigo-900/30 border-l-[3px] border-indigo-500 pl-8 text-slate-700 dark:text-slate-300";
+        zenClass += " !ml-0 inline-block w-full bg-indigo-50/70 dark:bg-indigo-900/30 border-l-[3px] border-indigo-500 pl-8 text-slate-700 dark:text-slate-300";
       } else {
-        zenClass += " block w-full bg-indigo-50/70 dark:bg-indigo-900/30 border-l-[3px] border-indigo-500 pl-2 font-semibold text-slate-900 dark:text-slate-100";
+        zenClass += " inline-block w-full bg-indigo-50/70 dark:bg-indigo-900/30 border-l-[3px] border-indigo-500 pl-2 font-semibold text-slate-900 dark:text-slate-100";
       }
     }
 
