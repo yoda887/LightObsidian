@@ -30,21 +30,21 @@ import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, Fi
 
 interface SidebarProps {
   notes: Note[];
-  folders: Folder[];
-  currentNoteId: string | null;
+  folders?: string[]; // Исправлено: возвращено string[] (как было в оригинале)
+  currentNoteId: string; // Исправлено: убран | null
   onSelectNote: (id: string) => void;
-  onCreateNote: (folderPath?: string) => void;
+  onCreateNote: (title?: string) => void; // Исправлено: title?: string
   onDeleteNote: (id: string) => void;
-  onExportHtml: (note: Note) => void;
+  onExportHtml: () => void; // Исправлено: убран аргумент note
   darkMode: boolean;
   onToggleTheme: () => void;
   onOpenVault?: () => void;
   vaultName?: string;
-  isVaultPending?: boolean;          // Добавлено правильно
-  onRestoreVaultAccess?: () => void; // Добавлено правильно
+  isVaultPending?: boolean;
+  onRestoreVaultAccess?: () => void;
   onOpenDailyNote: () => void;
   onOpenRandomNote: () => void;
-} // Тут должна быть ОДНА закрывающая скобка
+}
 
 interface TreeNode {
   name: string;
