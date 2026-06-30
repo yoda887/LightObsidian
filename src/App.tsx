@@ -136,7 +136,7 @@ export default function App() {
   }, [darkMode]);
 
   const saveTimeoutRef = React.useRef<any>(null);
-  const pendingWritesRef = React.useRef<Map<string, { note: Note; oldTitle: string | null }>>(new Map());
+  const pendingWritesRef = React.useRef<globalThis.Map<string, { note: Note; oldTitle: string | null }>>(new globalThis.Map());
 
   const flushVaultWrites = async () => {
     if (!vaultHandle) return;
