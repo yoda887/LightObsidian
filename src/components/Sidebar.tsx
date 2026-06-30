@@ -8,25 +8,43 @@ import { Note } from "../types";
 //import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock } from "lucide-react";
 import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock, AlertTriangle } from "lucide-react";
 
+// interface SidebarProps {
+//   notes: Note[];
+//   folders?: string[];
+//   currentNoteId: string;
+//   onSelectNote: (id: string) => void;
+//   onCreateNote: (title?: string) => void;
+//   onDeleteNote: (id: string) => void;
+//   onExportHtml: () => void;
+//   darkMode: boolean;
+//   onToggleTheme: () => void;
+//   onOpenVault?: () => void;
+//   vaultName?: string;
+//   onOpenDailyNote: () => void;
+//   onOpenRandomNote: () => void;
+//   vaultName?: string;
+//   isVaultPending?: boolean;
+//   onRestoreVaultAccess?: () => void;
+//   onOpenDailyNote: () => void;
+// }
+
 interface SidebarProps {
   notes: Note[];
-  folders?: string[];
-  currentNoteId: string;
+  folders: Folder[];
+  currentNoteId: string | null;
   onSelectNote: (id: string) => void;
-  onCreateNote: (title?: string) => void;
+  onCreateNote: (folderPath?: string) => void;
   onDeleteNote: (id: string) => void;
-  onExportHtml: () => void;
+  onExportHtml: (note: Note) => void;
   darkMode: boolean;
   onToggleTheme: () => void;
   onOpenVault?: () => void;
   vaultName?: string;
+  isVaultPending?: boolean;          // Добавлено правильно
+  onRestoreVaultAccess?: () => void; // Добавлено правильно
   onOpenDailyNote: () => void;
   onOpenRandomNote: () => void;
-  vaultName?: string;
-  isVaultPending?: boolean;
-  onRestoreVaultAccess?: () => void;
-  onOpenDailyNote: () => void;
-}
+} // Тут должна быть ОДНА закрывающая скобка
 
 interface TreeNode {
   name: string;
