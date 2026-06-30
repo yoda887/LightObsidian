@@ -367,7 +367,7 @@ export default function RightSidebar({
           }`}
         >
           <FileText className="w-4 h-4" />
-          Node
+          Note
         </button>
         <button
           onClick={() => setMainTab('learning')}
