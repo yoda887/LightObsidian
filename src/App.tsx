@@ -586,8 +586,16 @@ if (savedHandle) {
 
     const updated = [...notes, newNote];
     setNotes(updated);
+    
+    // 1. СРАЗУ ЖЕ обновляем интерфейс (без ожидания диска)
+    setCurrentNoteId(newNote.id);
+    setOpenNoteIds(prev => prev.includes(newNote.id) ? prev : [...prev, newNote.id]);
+    if (appMode === "graph") setAppMode("split");
+
+    // 2. Сохраняем в IndexedDB
     putNote(newNote).catch(console.error);
 
+    // 3. Записываем на физический диск
     if (vaultHandle) {
       setIsVaultSaving(true); // <--- ВКЛЮЧАЕМ
       try {
@@ -601,10 +609,6 @@ if (savedHandle) {
         setIsVaultSaving(false); // <--- ВЫКЛЮЧАЕМ
       }
     }
-
-    setCurrentNoteId(newNote.id);
-    setOpenNoteIds(prev => prev.includes(newNote.id) ? prev : [...prev, newNote.id]);
-    if (appMode === "graph") setAppMode("split");
   };
 
   const generateUniqueTitle = (): string => {
@@ -623,8 +627,22 @@ if (savedHandle) {
     const noteToDelete = notesById.get(id);
       const filtered = notes.filter(n => n.id !== id);
       setNotes(filtered);
+      
+      // 1. СРАЗУ ЖЕ закрываем вкладку и переключаем интерфейс
+      if (currentNoteId === id) {
+        const remainingTabs = openNoteIds.filter(t => t !== id);
+        if (remainingTabs.length > 0) {
+          setCurrentNoteId(remainingTabs[remainingTabs.length - 1]);
+        } else {
+          setCurrentNoteId(filtered.length > 0 ? filtered[0].id : "");
+        }
+      }
+      setOpenNoteIds(prev => prev.filter(t => t !== id));
+
+      // 2. Удаляем из IndexedDB
       deleteNote(id).catch(console.error);
       
+      // 3. Физически удаляем с диска
       if (vaultHandle && noteToDelete) {
         setIsVaultSaving(true); // <--- ВКЛЮЧАЕМ
         try {
@@ -636,16 +654,6 @@ if (savedHandle) {
           setIsVaultSaving(false); // <--- ВЫКЛЮЧАЕМ
         }
       }
-      
-      if (currentNoteId === id) {
-        const remainingTabs = openNoteIds.filter(t => t !== id);
-        if (remainingTabs.length > 0) {
-          setCurrentNoteId(remainingTabs[remainingTabs.length - 1]);
-        } else {
-          setCurrentNoteId(filtered.length > 0 ? filtered[0].id : "");
-        }
-      }
-      setOpenNoteIds(prev => prev.filter(t => t !== id));
     }
   };
 
