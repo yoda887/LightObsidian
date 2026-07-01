@@ -16,8 +16,7 @@ import ReviewModal from "./components/ReviewModal";
 import { extractFlashcards, getDueCards, updateFlashcardInContent, Flashcard } from "./flashcards";
 import TimelineView from "./components/TimelineView";
 import HelpDialog from "./components/HelpDialog";
-import { Map, FileText, Settings, Download, BookOpen, PanelRight, Edit3, Columns, Eye, X, Zap, Sun, Moon, Type, ArrowLeft, ArrowRight, Brain, Clock, HelpCircle } from "lucide-react";
-
+import { Map as MapIcon, FileText, Settings, Download, BookOpen, PanelRight, Edit3, Columns, Eye, X, Zap, Sun, Moon, Type, ArrowLeft, ArrowRight, Brain, Clock, HelpCircle } from "lucide-react";
 // Default placeholder notes to guide the user
 const DEFAULT_NOTES: Note[] = [
   {
@@ -78,15 +77,17 @@ export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [currentNoteId, setCurrentNoteId] = useState<string>("");
   const [openNoteIds, setOpenNoteIds] = useState<string[]>([]);
-// O(1) доступ вместо notes.find()/notes.some() — критично при большом vault
+
+  
+  // O(1) доступ вместо notes.find()/notes.some() — критично при большом vault
 const notesById = useMemo(() => {
-  const map = new globalThis.Map<string, Note>();
+  const map = new Map<string, Note>(); // убрано globalThis.
   for (const n of notes) map.set(n.id, n);
   return map;
 }, [notes]);
 
 const notesByTitle = useMemo(() => {
-  const map = new globalThis.Map<string, Note>();
+  const map = new Map<string, Note>(); // убрано globalThis.
   for (const n of notes) map.set(n.title.trim().toLowerCase(), n);
   return map;
 }, [notes]);
@@ -151,7 +152,7 @@ const notesByTitle = useMemo(() => {
   }, [darkMode]);
 
   const saveTimeoutRef = React.useRef<any>(null);
-  const pendingWritesRef = React.useRef<globalThis.Map<string, { note: Note; oldTitle: string | null; oldPath: string | undefined }>>(new globalThis.Map());
+ const pendingWritesRef = React.useRef<Map<string, { note: Note; oldTitle: string | null; oldPath: string | undefined }>>(new Map());
 // id файлов, которые всё ещё физически лежат на диске под старым именем/путём,
 // но уже запланированы к удалению после debounce — sync должен их игнорировать
 const pendingDeletionsRef = React.useRef<Set<string>>(new Set());
@@ -514,7 +515,7 @@ if (savedHandle) {
   setIsVaultLoading(true);
   try {
     // Строим Map один раз за весь обход, а не заново на каждый файл
-    const existingMap = new globalThis.Map(notesRef.current.map(n => [n.id, n]));
+const existingMap = new Map(notesRef.current.map(n => [n.id, n])); // убрано globalThis.
     const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(vaultHandle, "", existingMap);
 
     setFolders(loadedFolders);
@@ -1004,7 +1005,7 @@ const handleUpdateNote = async (id: string, updates: Partial<Note>) => {
               }`}
               title="Interactive graph map"
             >
-              <Map className="w-3.5 h-3.5" />
+              <MapIcon className="w-3.5 h-3.5" />
               <span className="hidden md:inline">Graph Map</span>
             </button>
             <button
