@@ -206,19 +206,30 @@ export default function App() {
           const id = currentPath ? `${currentPath}/${entry.name}` : entry.name;
           
           const existing = existingNotes.find(n => n.id === id);
-          if (existing && existing.updatedAt === statDate) {
-            notesResult.push(existing);
-          } else {
-            const content = await file.text();
-            notesResult.push({
-              id,
-              title: entry.name.replace('.md', ''),
-              content: content,
-              createdAt: statDate,
-              updatedAt: statDate,
-              path: currentPath
-            });
+          const isPendingWrite = pendingWritesRef.current.has(id);
+          
+          if (existing) {
+            const existingTime = new Date(existing.updatedAt).getTime();
+            // ЗАЩИТА: Оставляем локальную версию в памяти, если:
+            // 1. Файл сейчас находится в процессе сохранения (isPendingWrite)
+            // 2. Локальное время обновления новее или равно времени изменения файла на диске
+            // 3. Строковые даты полностью совпадают
+            if (isPendingWrite || existingTime >= file.lastModified || existing.updatedAt === statDate) {
+              notesResult.push(existing);
+              continue;
+            }
           }
+
+          const content = await file.text();
+          notesResult.push({
+            id,
+            title: entry.name.replace('.md', ''),
+            content: content,
+            // ИСПРАВЛЕНИЕ: Берем старую дату создания, если заметка уже есть в памяти
+            createdAt: existing ? existing.createdAt : statDate, 
+            updatedAt: statDate,
+            path: currentPath
+          });
         } catch (e) {
           console.error("Error reading file", entry.name, e);
         }
