@@ -142,8 +142,8 @@ export default function App() {
     if (!vaultHandle) return;
     setIsVaultSaving(true);
     
-    // Делаем снимок текущих ожидающих записей (entries вместо values)
-    const writes = Array.from(pendingWritesRef.current.entries());
+    // Делаем снимок текущих ожидающих записей с явным указанием типа для TypeScript
+    const writes = Array.from(pendingWritesRef.current.entries()) as Array<[string, { note: Note; oldTitle: string | null }]>;
 
     for (const [id, data] of writes) {
       const { note, oldTitle } = data;
@@ -211,7 +211,7 @@ export default function App() {
           if (existing) {
             const existingTime = new Date(existing.updatedAt).getTime();
             // ЗАЩИТА: Оставляем локальную версию в памяти, если:
-            // 1. Файл сейчас находится в процессе сохранения (isPendingWrite)
+            // 1. Файл сейчас находится в процессе сохранения
             // 2. Локальное время обновления новее или равно времени изменения файла на диске
             // 3. Строковые даты полностью совпадают
             if (isPendingWrite || existingTime >= file.lastModified || existing.updatedAt === statDate) {
@@ -225,7 +225,7 @@ export default function App() {
             id,
             title: entry.name.replace('.md', ''),
             content: content,
-            // ИСПРАВЛЕНИЕ: Берем старую дату создания, если заметка уже есть в памяти
+            // Берем старую дату создания, если заметка уже есть в памяти
             createdAt: existing ? existing.createdAt : statDate, 
             updatedAt: statDate,
             path: currentPath
