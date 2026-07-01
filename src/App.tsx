@@ -142,11 +142,11 @@ export default function App() {
     if (!vaultHandle) return;
     setIsVaultSaving(true);
     
-    // Process all pending writes sequentially to avoid locks
-    const writes = Array.from(pendingWritesRef.current.values()) as Array<{ note: Note; oldTitle: string | null }>;
-    pendingWritesRef.current.clear(); // Clear immediately so new writes can queue
+    // Делаем снимок текущих ожидающих записей (entries вместо values)
+    const writes = Array.from(pendingWritesRef.current.entries());
 
-    for (const { note, oldTitle } of writes) {
+    for (const [id, data] of writes) {
+      const { note, oldTitle } = data;
       try {
         const dirHandle = await getDirHandleByPath(vaultHandle, note.path);
         
@@ -164,6 +164,12 @@ export default function App() {
         const writable = await fileHandle.createWritable();
         await writable.write(note.content);
         await writable.close();
+
+        // Удаляем из очереди только если за время сохранения 
+        // пользователь не успел напечатать новые символы
+        if (pendingWritesRef.current.get(id) === data) {
+          pendingWritesRef.current.delete(id);
+        }
       } catch (err) {
         console.error("Failed to save to vault", err);
       }
