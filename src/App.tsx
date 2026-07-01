@@ -235,7 +235,7 @@ const flushVaultWrites = async () => {
   const getFilesRecursively = async (
   dirHandle: any,
   currentPath: string = "",
-  existingNotesMap: globalThis.Map<string, Note> = new globalThis.Map()
+  existingNotesMap: Map<string, Note> = new Map()
 ): Promise<{notes: Note[], folders: string[]}> => {
   let notesResult: Note[] = [];
   let foldersResult: string[] = [];
@@ -504,43 +504,38 @@ if (savedHandle) {
   }, [notes]);
 
   // Sync vault with external file system changes
+  // Синхронизация с локальной папкой строго ОДИН РАЗ при инициализации или смене папки
   useEffect(() => {
     if (!vaultHandle) return;
 
     let isSyncing = false;
 
     const syncVault = async () => {
-  if (isSyncing || !vaultHandle) return;
-  isSyncing = true;
-  setIsVaultLoading(true);
-  try {
-    // Строим Map один раз за весь обход, а не заново на каждый файл
-const existingMap = new Map(notesRef.current.map(n => [n.id, n])); // убрано globalThis.
-    const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(vaultHandle, "", existingMap);
+      if (isSyncing || !vaultHandle) return;
+      isSyncing = true;
+      setIsVaultLoading(true);
+      try {
+        // Строим карту существующих заметок для getFilesRecursively
+        const existingMap = new Map(notesRef.current.map(n => [n.id, n]));
+        const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(vaultHandle, "", existingMap);
 
-    setFolders(loadedFolders);
-    setNotes(loadedNotes);
+        setFolders(loadedFolders);
+        setNotes(loadedNotes);
 
-    await clearNotes();
-    for (const n of loadedNotes) await putNote(n);
-  } catch (err) {
-    console.error("Failed to sync vault", err);
-  } finally {
-    setIsVaultLoading(false);
-    isSyncing = false;
-  }
-};
-
-    // Run sync when the browser window regains focus
-    window.addEventListener("focus", syncVault);
-
-    // Also run a background sync every 30 seconds
-    const intervalId = setInterval(syncVault, 30000);
-
-    return () => {
-      window.removeEventListener("focus", syncVault);
-      clearInterval(intervalId);
+        // Обновляем локальный кэш IndexedDB данными с диска
+        await clearNotes();
+        for (const n of loadedNotes) await putNote(n);
+      } catch (err) {
+        console.error("Failed to sync vault", err);
+      } finally {
+        setIsVaultLoading(false);
+        isSyncing = false;
+      }
     };
+
+    // Вызываем однократную вычитку папки
+    syncVault();
+
   }, [vaultHandle]);
 
   // Toggle theme
