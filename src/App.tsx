@@ -140,46 +140,70 @@ export default function App() {
 // id файлов, которые всё ещё физически лежат на диске под старым именем/путём,
 // но уже запланированы к удалению после debounce — sync должен их игнорировать
 const pendingDeletionsRef = React.useRef<Set<string>>(new Set());
+// Мьютекс: пока идёт запись на диск, новый вызов flushVaultWrites не стартует
+// параллельно, а лишь просит повторить прогон после завершения текущего
+const isFlushingRef = React.useRef(false);
+const flushQueuedRef = React.useRef(false);
 
   const flushVaultWrites = async () => {
   if (!vaultHandle) return;
-  setIsVaultSaving(true);
 
-  const writes = Array.from(pendingWritesRef.current.entries()) as Array<[string, { note: Note; oldTitle: string | null; oldPath: string | undefined }]>;
-
-  for (const [id, data] of writes) {
-    const { note, oldTitle, oldPath } = data;
-    try {
-      // Удаляем старый файл ИЗ СТАРОЙ папки (а не из новой)
-      if (oldTitle && oldTitle !== note.title.trim()) {
-        const oldFilename = `${oldTitle}.md`;
-        const oldId = (oldPath ? oldPath + "/" : "") + oldFilename;
-        try {
-          const oldDirHandle = await getDirHandleByPath(vaultHandle, oldPath);
-          await oldDirHandle.removeEntry(oldFilename);
-        } catch (e) {
-          console.error("Could not remove old file during rename", e);
-        } finally {
-          pendingDeletionsRef.current.delete(oldId);
-        }
-      }
-
-      const dirHandle = await getDirHandleByPath(vaultHandle, note.path);
-      const filename = `${note.title.trim()}.md`;
-      const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
-      const writable = await fileHandle.createWritable();
-      await writable.write(note.content);
-      await writable.close();
-
-      if (pendingWritesRef.current.get(id) === data) {
-        pendingWritesRef.current.delete(id);
-      }
-    } catch (err) {
-      console.error("Failed to save to vault", err);
-    }
+  // Уже идёт запись — не стартуем вторую параллельно, а просто помечаем,
+  // что после завершения текущей нужно прогнать ещё раз (вдруг за это
+  // время накопились новые pendingWrites)
+  if (isFlushingRef.current) {
+    flushQueuedRef.current = true;
+    return;
   }
 
-  setIsVaultSaving(false);
+  isFlushingRef.current = true;
+  setIsVaultSaving(true);
+
+  try {
+    const writes = Array.from(pendingWritesRef.current.entries()) as Array<[string, { note: Note; oldTitle: string | null; oldPath: string | undefined }]>;
+
+    for (const [id, data] of writes) {
+      const { note, oldTitle, oldPath } = data;
+      try {
+        // Удаляем старый файл ИЗ СТАРОЙ папки (а не из новой)
+        if (oldTitle && oldTitle !== note.title.trim()) {
+          const oldFilename = `${oldTitle}.md`;
+          const oldId = (oldPath ? oldPath + "/" : "") + oldFilename;
+          try {
+            const oldDirHandle = await getDirHandleByPath(vaultHandle, oldPath);
+            await oldDirHandle.removeEntry(oldFilename);
+          } catch (e) {
+            console.error("Could not remove old file during rename", e);
+          } finally {
+            pendingDeletionsRef.current.delete(oldId);
+          }
+        }
+
+        const dirHandle = await getDirHandleByPath(vaultHandle, note.path);
+        const filename = `${note.title.trim()}.md`;
+        const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(note.content);
+        await writable.close();
+
+        if (pendingWritesRef.current.get(id) === data) {
+          pendingWritesRef.current.delete(id);
+        }
+      } catch (err) {
+        console.error("Failed to save to vault", err);
+      }
+    }
+  } finally {
+    isFlushingRef.current = false;
+    setIsVaultSaving(false);
+
+    // Пока мы писали, могли накопиться новые pendingWrites (или подоспел
+    // ещё один запрос на flush) — прогоняем ещё раз, чтобы их не потерять
+    if (flushQueuedRef.current) {
+      flushQueuedRef.current = false;
+      flushVaultWrites();
+    }
+  }
 };
 
   const getDirHandleByPath = async (rootHandle: any, pathStr: string | undefined) => {
