@@ -78,15 +78,15 @@ export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [currentNoteId, setCurrentNoteId] = useState<string>("");
   const [openNoteIds, setOpenNoteIds] = useState<string[]>([]);
-  // O(1) доступ вместо notes.find()/notes.some() — критично при большом vault
+// O(1) доступ вместо notes.find()/notes.some() — критично при большом vault
 const notesById = useMemo(() => {
-  const map = new Map<string, Note>();
+  const map = new globalThis.Map<string, Note>();
   for (const n of notes) map.set(n.id, n);
   return map;
 }, [notes]);
 
 const notesByTitle = useMemo(() => {
-  const map = new Map<string, Note>();
+  const map = new globalThis.Map<string, Note>();
   for (const n of notes) map.set(n.title.trim().toLowerCase(), n);
   return map;
 }, [notes]);
