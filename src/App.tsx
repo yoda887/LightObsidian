@@ -136,47 +136,51 @@ export default function App() {
   }, [darkMode]);
 
   const saveTimeoutRef = React.useRef<any>(null);
-  const pendingWritesRef = React.useRef<globalThis.Map<string, { note: Note; oldTitle: string | null }>>(new globalThis.Map());
+  const pendingWritesRef = React.useRef<globalThis.Map<string, { note: Note; oldTitle: string | null; oldPath: string | undefined }>>(new globalThis.Map());
+// id файлов, которые всё ещё физически лежат на диске под старым именем/путём,
+// но уже запланированы к удалению после debounce — sync должен их игнорировать
+const pendingDeletionsRef = React.useRef<Set<string>>(new Set());
 
   const flushVaultWrites = async () => {
-    if (!vaultHandle) return;
-    setIsVaultSaving(true);
-    
-    // Делаем снимок текущих ожидающих записей с явным указанием типа для TypeScript
-    const writes = Array.from(pendingWritesRef.current.entries()) as Array<[string, { note: Note; oldTitle: string | null }]>;
+  if (!vaultHandle) return;
+  setIsVaultSaving(true);
 
-    for (const [id, data] of writes) {
-      const { note, oldTitle } = data;
-      try {
-        const dirHandle = await getDirHandleByPath(vaultHandle, note.path);
-        
-        if (oldTitle && oldTitle !== note.title.trim()) {
-          const oldFilename = `${oldTitle}.md`;
-          try {
-            await dirHandle.removeEntry(oldFilename);
-          } catch(e) {
-            console.error("Could not remove old file during rename", e);
-          }
-        }
-        
-        const filename = `${note.title.trim()}.md`;
-        const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
-        const writable = await fileHandle.createWritable();
-        await writable.write(note.content);
-        await writable.close();
+  const writes = Array.from(pendingWritesRef.current.entries()) as Array<[string, { note: Note; oldTitle: string | null; oldPath: string | undefined }]>;
 
-        // Удаляем из очереди только если за время сохранения 
-        // пользователь не успел напечатать новые символы
-        if (pendingWritesRef.current.get(id) === data) {
-          pendingWritesRef.current.delete(id);
+  for (const [id, data] of writes) {
+    const { note, oldTitle, oldPath } = data;
+    try {
+      // Удаляем старый файл ИЗ СТАРОЙ папки (а не из новой)
+      if (oldTitle && oldTitle !== note.title.trim()) {
+        const oldFilename = `${oldTitle}.md`;
+        const oldId = (oldPath ? oldPath + "/" : "") + oldFilename;
+        try {
+          const oldDirHandle = await getDirHandleByPath(vaultHandle, oldPath);
+          await oldDirHandle.removeEntry(oldFilename);
+        } catch (e) {
+          console.error("Could not remove old file during rename", e);
+        } finally {
+          pendingDeletionsRef.current.delete(oldId);
         }
-      } catch (err) {
-        console.error("Failed to save to vault", err);
       }
+
+      const dirHandle = await getDirHandleByPath(vaultHandle, note.path);
+      const filename = `${note.title.trim()}.md`;
+      const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(note.content);
+      await writable.close();
+
+      if (pendingWritesRef.current.get(id) === data) {
+        pendingWritesRef.current.delete(id);
+      }
+    } catch (err) {
+      console.error("Failed to save to vault", err);
     }
-    
-    setIsVaultSaving(false);
-  };
+  }
+
+  setIsVaultSaving(false);
+};
 
   const getDirHandleByPath = async (rootHandle: any, pathStr: string | undefined) => {
     if (!pathStr) return rootHandle;
@@ -195,55 +199,62 @@ export default function App() {
   const [isVaultSaving, setIsVaultSaving] = useState<boolean>(false);
 
   const getFilesRecursively = async (dirHandle: any, currentPath: string = "", existingNotes: Note[] = []): Promise<{notes: Note[], folders: string[]}> => {
-    let notesResult: Note[] = [];
-    let foldersResult: string[] = [];
-    
-    for await (const entry of dirHandle.values()) {
-      if (entry.kind === 'file' && entry.name.endsWith('.md')) {
-        try {
-          const file = await entry.getFile();
-          const statDate = new Date(file.lastModified).toISOString();
-          const id = currentPath ? `${currentPath}/${entry.name}` : entry.name;
-          
-          const existing = existingNotes.find(n => n.id === id);
-          const isPendingWrite = pendingWritesRef.current.has(id);
-          
-          if (existing) {
-            const existingTime = new Date(existing.updatedAt).getTime();
-            // ЗАЩИТА: Оставляем локальную версию в памяти, если:
-            // 1. Файл сейчас находится в процессе сохранения
-            // 2. Локальное время обновления новее или равно времени изменения файла на диске
-            // 3. Строковые даты полностью совпадают
-            if (isPendingWrite || existingTime >= file.lastModified || existing.updatedAt === statDate) {
-              notesResult.push(existing);
-              continue;
-            }
-          }
+  let notesResult: Note[] = [];
+  let foldersResult: string[] = [];
 
-          const content = await file.text();
-          notesResult.push({
-            id,
-            title: entry.name.replace('.md', ''),
-            content: content,
-            // Берем старую дату создания, если заметка уже есть в памяти
-            createdAt: existing ? existing.createdAt : statDate, 
-            updatedAt: statDate,
-            path: currentPath
-          });
-        } catch (e) {
-          console.error("Error reading file", entry.name, e);
-        }
-      } else if (entry.kind === 'directory') {
-        if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-        const subPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
-        foldersResult.push(subPath);
-        const subData = await getFilesRecursively(entry, subPath, existingNotes);
-        notesResult.push(...subData.notes);
-        foldersResult.push(...subData.folders);
+  for await (const entry of dirHandle.values()) {
+    if (entry.kind === 'file' && entry.name.endsWith('.md')) {
+      const id = currentPath ? `${currentPath}/${entry.name}` : entry.name;
+
+      // Файл уже переименован/перенесён локально и ждёт удаления с диска —
+      // не читаем его как "новую" заметку, он вот-вот исчезнет после flush
+      if (pendingDeletionsRef.current.has(id)) {
+        continue;
       }
+
+      try {
+        const file = await entry.getFile();
+        const statDate = new Date(file.lastModified).toISOString();
+
+        const existing = existingNotes.find(n => n.id === id);
+        const isPendingWrite = pendingWritesRef.current.has(id);
+
+        if (existing) {
+          const existingTime = new Date(existing.updatedAt).getTime();
+          // ЗАЩИТА: Оставляем локальную версию в памяти, если:
+          // 1. Файл сейчас находится в процессе сохранения
+          // 2. Локальное время обновления новее или равно времени изменения файла на диске
+          // 3. Строковые даты полностью совпадают
+          if (isPendingWrite || existingTime >= file.lastModified || existing.updatedAt === statDate) {
+            notesResult.push(existing);
+            continue;
+          }
+        }
+
+        const content = await file.text();
+        notesResult.push({
+          id,
+          title: entry.name.replace('.md', ''),
+          content: content,
+          // Берем старую дату создания, если заметка уже есть в памяти
+          createdAt: existing ? existing.createdAt : statDate,
+          updatedAt: statDate,
+          path: currentPath
+        });
+      } catch (e) {
+        console.error("Error reading file", entry.name, e);
+      }
+    } else if (entry.kind === 'directory') {
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+      const subPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
+      foldersResult.push(subPath);
+      const subData = await getFilesRecursively(entry, subPath, existingNotes);
+      notesResult.push(...subData.notes);
+      foldersResult.push(...subData.folders);
     }
-    return {notes: notesResult, folders: foldersResult};
-  };
+  }
+  return {notes: notesResult, folders: foldersResult};
+};
 
   const openVault = async () => {
     // @ts-ignore
@@ -623,76 +634,90 @@ if (savedHandle) {
 
   // Update note content or title
   const handleUpdateNote = async (id: string, updates: Partial<Note>) => {
-    // Prevent duplicate titles on rename
-    if (updates.title !== undefined) {
-      const newTitle = updates.title.replace(/[<>:"/\\|?*]/g, '').trim();
-      if (!newTitle) {
-        delete updates.title;
-      } else {
-        updates.title = newTitle; // Ensure the sanitized title is what gets saved
-        const existing = notes.find(n => n.id !== id && n.title.trim().toLowerCase() === newTitle.toLowerCase());
-        if (existing) {
-          alert(`A note named "${newTitle}" already exists!`);
-          return;
-        }
+  // Prevent duplicate titles on rename
+  if (updates.title !== undefined) {
+    const newTitle = updates.title.replace(/[<>:"/\\|?*]/g, '').trim();
+    if (!newTitle) {
+      delete updates.title;
+    } else {
+      updates.title = newTitle; // Ensure the sanitized title is what gets saved
+      const existing = notes.find(n => n.id !== id && n.title.trim().toLowerCase() === newTitle.toLowerCase());
+      if (existing) {
+        alert(`A note named "${newTitle}" already exists!`);
+        return;
       }
     }
+  }
 
-    let updatedNote: Note | null = null;
-    let oldNote: Note | null = notes.find(n => n.id === id) || null;
-    let filenameChanged = false;
+  let updatedNote: Note | null = null;
+  let oldNote: Note | null = notes.find(n => n.id === id) || null;
+  let filenameChanged = false;
 
-    const updated = notes.map(note => {
-      if (note.id === id) {
-        updatedNote = {
-          ...note,
-          ...updates,
-          updatedAt: new Date().toISOString()
-        };
-        // Check if title actually changed
-        if (updates.title !== undefined && updates.title.trim() !== note.title.trim() && updates.title.trim() !== "") {
-          updatedNote.id = (updatedNote.path ? updatedNote.path + "/" : "") + `${updates.title.trim()}.md`;
-          filenameChanged = true;
-        }
-        return updatedNote;
+  const updated = notes.map(note => {
+    if (note.id === id) {
+      updatedNote = {
+        ...note,
+        ...updates,
+        updatedAt: new Date().toISOString()
+      };
+      // Check if title actually changed
+      if (updates.title !== undefined && updates.title.trim() !== note.title.trim() && updates.title.trim() !== "") {
+        updatedNote.id = (updatedNote.path ? updatedNote.path + "/" : "") + `${updates.title.trim()}.md`;
+        filenameChanged = true;
       }
-      return note;
+      return updatedNote;
+    }
+    return note;
+  });
+
+  if (!updatedNote) return;
+
+  setNotes(updated);
+
+  // Update active IDs synchronously before async ops to prevent Editor unmount blinking
+  if (filenameChanged) {
+    if (currentNoteId === id) {
+      setCurrentNoteId(updatedNote.id);
+    }
+    setOpenNoteIds(prev => prev.map(tabId => tabId === id ? updatedNote!.id : tabId));
+  }
+
+  if (filenameChanged && oldNote) {
+    deleteNote(oldNote.id).catch(console.error);
+  }
+  putNote(updatedNote).catch(console.error);
+
+  if (vaultHandle && updatedNote && oldNote) {
+    // Определяем "самое старое" название/путь, под которым файл ещё реально лежит на диске.
+    // Если уже есть незавершённая запись для oldNote.id — унаследуем её oldTitle/oldPath,
+    // чтобы цепочка быстрых переименований (A→B→C) корректно схлопывалась в одно A→C.
+    let originalTitle = filenameChanged ? oldNote.title.trim() : null;
+    let originalPath = oldNote.path;
+
+    if (pendingWritesRef.current.has(oldNote.id)) {
+      const prevPending = pendingWritesRef.current.get(oldNote.id)!;
+      originalTitle = prevPending.oldTitle || originalTitle;
+      originalPath = prevPending.oldPath !== undefined ? prevPending.oldPath : originalPath;
+      pendingWritesRef.current.delete(oldNote.id); // remove old ID from queue
+    }
+
+    pendingWritesRef.current.set(updatedNote.id, {
+      note: updatedNote,
+      oldTitle: originalTitle,
+      oldPath: originalTitle ? originalPath : undefined
     });
 
-    if (!updatedNote) return;
-
-    setNotes(updated);
-    
-    // Update active IDs synchronously before async ops to prevent Editor unmount blinking
-    if (filenameChanged) {
-      if (currentNoteId === id) {
-        setCurrentNoteId(updatedNote.id);
-      }
-      setOpenNoteIds(prev => prev.map(tabId => tabId === id ? updatedNote!.id : tabId));
+    // Файл под старым именем/путём ещё существует на диске до flush —
+    // помечаем его, чтобы фоновый sync не подхватил его как отдельную заметку
+    if (originalTitle) {
+      const oldFileId = (originalPath ? originalPath + "/" : "") + `${originalTitle}.md`;
+      pendingDeletionsRef.current.add(oldFileId);
     }
 
-    if (filenameChanged && oldNote) {
-      deleteNote(oldNote.id).catch(console.error);
-    }
-    putNote(updatedNote).catch(console.error);
-
-    if (vaultHandle && updatedNote && oldNote) {
-      // Find if we already have a pending write for this note (by looking at oldNote.id)
-      let originalTitle = filenameChanged ? oldNote.title.trim() : null;
-      if (pendingWritesRef.current.has(oldNote.id)) {
-         originalTitle = pendingWritesRef.current.get(oldNote.id)!.oldTitle || originalTitle;
-         pendingWritesRef.current.delete(oldNote.id); // remove old ID from queue
-      }
-      
-      pendingWritesRef.current.set(updatedNote.id, {
-        note: updatedNote,
-        oldTitle: originalTitle
-      });
-
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = setTimeout(flushVaultWrites, 1000);
-    }
-  };
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(flushVaultWrites, 1000);
+  }
+};
 
   const handleOpenDailyNote = () => {
     const today = new Date().toISOString().split('T')[0];
