@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { Note } from "./types";
 import { generateSingleHtmlApp, splitFrontmatter, replacePlaintextInMarkdown } from "./utils";
 import { getAllNotes, putNote, deleteNote, clearNotes, saveVaultHandle, getVaultHandle, clearVaultHandle } from "./db";
@@ -78,6 +78,21 @@ export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [currentNoteId, setCurrentNoteId] = useState<string>("");
   const [openNoteIds, setOpenNoteIds] = useState<string[]>([]);
+  // O(1) доступ вместо notes.find()/notes.some() — критично при большом vault
+const notesById = useMemo(() => {
+  const map = new Map<string, Note>();
+  for (const n of notes) map.set(n.id, n);
+  return map;
+}, [notes]);
+
+const notesByTitle = useMemo(() => {
+  const map = new Map<string, Note>();
+  for (const n of notes) map.set(n.title.trim().toLowerCase(), n);
+  return map;
+}, [notes]);
+
+
+  
   const [darkMode, setDarkMode] = useState<boolean>(false);
   const [typewriterMode, setTypewriterMode] = useState<boolean>(false);
   const [appMode, setAppMode] = useState<"edit" | "preview" | "split" | "graph" | "dynamic" | "timeline">("split");
@@ -145,12 +160,9 @@ const pendingDeletionsRef = React.useRef<Set<string>>(new Set());
 const isFlushingRef = React.useRef(false);
 const flushQueuedRef = React.useRef(false);
 
-  const flushVaultWrites = async () => {
+const flushVaultWrites = async () => {
   if (!vaultHandle) return;
 
-  // Уже идёт запись — не стартуем вторую параллельно, а просто помечаем,
-  // что после завершения текущей нужно прогнать ещё раз (вдруг за это
-  // время накопились новые pendingWrites)
   if (isFlushingRef.current) {
     flushQueuedRef.current = true;
     return;
@@ -165,7 +177,6 @@ const flushQueuedRef = React.useRef(false);
     for (const [id, data] of writes) {
       const { note, oldTitle, oldPath } = data;
       try {
-        // Удаляем старый файл ИЗ СТАРОЙ папки (а не из новой)
         if (oldTitle && oldTitle !== note.title.trim()) {
           const oldFilename = `${oldTitle}.md`;
           const oldId = (oldPath ? oldPath + "/" : "") + oldFilename;
@@ -197,8 +208,6 @@ const flushQueuedRef = React.useRef(false);
     isFlushingRef.current = false;
     setIsVaultSaving(false);
 
-    // Пока мы писали, могли накопиться новые pendingWrites (или подоспел
-    // ещё один запрос на flush) — прогоняем ещё раз, чтобы их не потерять
     if (flushQueuedRef.current) {
       flushQueuedRef.current = false;
       flushVaultWrites();
@@ -222,7 +231,11 @@ const flushQueuedRef = React.useRef(false);
   const [isVaultLoading, setIsVaultLoading] = useState<boolean>(false);
   const [isVaultSaving, setIsVaultSaving] = useState<boolean>(false);
 
-  const getFilesRecursively = async (dirHandle: any, currentPath: string = "", existingNotes: Note[] = []): Promise<{notes: Note[], folders: string[]}> => {
+  const getFilesRecursively = async (
+  dirHandle: any,
+  currentPath: string = "",
+  existingNotesMap: globalThis.Map<string, Note> = new globalThis.Map()
+): Promise<{notes: Note[], folders: string[]}> => {
   let notesResult: Note[] = [];
   let foldersResult: string[] = [];
 
@@ -230,8 +243,6 @@ const flushQueuedRef = React.useRef(false);
     if (entry.kind === 'file' && entry.name.endsWith('.md')) {
       const id = currentPath ? `${currentPath}/${entry.name}` : entry.name;
 
-      // Файл уже переименован/перенесён локально и ждёт удаления с диска —
-      // не читаем его как "новую" заметку, он вот-вот исчезнет после flush
       if (pendingDeletionsRef.current.has(id)) {
         continue;
       }
@@ -240,15 +251,11 @@ const flushQueuedRef = React.useRef(false);
         const file = await entry.getFile();
         const statDate = new Date(file.lastModified).toISOString();
 
-        const existing = existingNotes.find(n => n.id === id);
+        const existing = existingNotesMap.get(id);
         const isPendingWrite = pendingWritesRef.current.has(id);
 
         if (existing) {
           const existingTime = new Date(existing.updatedAt).getTime();
-          // ЗАЩИТА: Оставляем локальную версию в памяти, если:
-          // 1. Файл сейчас находится в процессе сохранения
-          // 2. Локальное время обновления новее или равно времени изменения файла на диске
-          // 3. Строковые даты полностью совпадают
           if (isPendingWrite || existingTime >= file.lastModified || existing.updatedAt === statDate) {
             notesResult.push(existing);
             continue;
@@ -260,7 +267,6 @@ const flushQueuedRef = React.useRef(false);
           id,
           title: entry.name.replace('.md', ''),
           content: content,
-          // Берем старую дату создания, если заметка уже есть в памяти
           createdAt: existing ? existing.createdAt : statDate,
           updatedAt: statDate,
           path: currentPath
@@ -272,7 +278,7 @@ const flushQueuedRef = React.useRef(false);
       if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
       const subPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
       foldersResult.push(subPath);
-      const subData = await getFilesRecursively(entry, subPath, existingNotes);
+      const subData = await getFilesRecursively(entry, subPath, existingNotesMap);
       notesResult.push(...subData.notes);
       foldersResult.push(...subData.folders);
     }
@@ -503,25 +509,26 @@ if (savedHandle) {
     let isSyncing = false;
 
     const syncVault = async () => {
-      if (isSyncing || !vaultHandle) return;
-      isSyncing = true;
-      setIsVaultLoading(true); // <--- ВКЛЮЧАЕМ СПИННЕР
-      try {
-        // We pass the current notes in memory so we can skip re-reading files that haven't changed
-        const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(vaultHandle, "", notesRef.current);
-        
-        setFolders(loadedFolders);
-        setNotes(loadedNotes);
+  if (isSyncing || !vaultHandle) return;
+  isSyncing = true;
+  setIsVaultLoading(true);
+  try {
+    // Строим Map один раз за весь обход, а не заново на каждый файл
+    const existingMap = new globalThis.Map(notesRef.current.map(n => [n.id, n]));
+    const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(vaultHandle, "", existingMap);
 
-        await clearNotes();
-        for (const n of loadedNotes) await putNote(n);
-      } catch (err) {
-        console.error("Failed to sync vault", err);
-      } finally {
-        setIsVaultLoading(false); // <--- ВЫКЛЮЧАЕМ СПИННЕР
-        isSyncing = false;
-      }
-    };
+    setFolders(loadedFolders);
+    setNotes(loadedNotes);
+
+    await clearNotes();
+    for (const n of loadedNotes) await putNote(n);
+  } catch (err) {
+    console.error("Failed to sync vault", err);
+  } finally {
+    setIsVaultLoading(false);
+    isSyncing = false;
+  }
+};
 
     // Run sync when the browser window regains focus
     window.addEventListener("focus", syncVault);
@@ -557,20 +564,19 @@ if (savedHandle) {
 
   // Create a new note
   const handleCreateNote = async (folder: string = "", initialTitle: string = "Untitled") => {
-    let finalTitle = initialTitle.replace(/[<>:"/\\|?*]/g, '').trim();
-    if (!finalTitle) finalTitle = "Untitled";
-    
-    if (finalTitle === "Untitled" && notes.some(n => n.title.trim().toLowerCase() === "untitled")) {
-      finalTitle = generateUniqueTitle();
-    }
-    
-    // Check if a note with this title already exists
-    const existing = notes.find(n => n.title.trim().toLowerCase() === finalTitle.toLowerCase());
-    if (existing) {
-      alert(`A note named "${finalTitle}" already exists in your vault!`);
-      handleSelectNote(existing.id);
-      return;
-    }
+  let finalTitle = initialTitle.replace(/[<>:"/\\|?*]/g, '').trim();
+  if (!finalTitle) finalTitle = "Untitled";
+
+  if (finalTitle === "Untitled" && notesByTitle.has("untitled")) {
+    finalTitle = generateUniqueTitle();
+  }
+
+  const existing = notesByTitle.get(finalTitle.toLowerCase());
+  if (existing) {
+    alert(`A note named "${finalTitle}" already exists in your vault!`);
+    handleSelectNote(existing.id);
+    return;
+  }
 
     const filename = `${finalTitle}.md`;
     const newNote: Note = {
@@ -606,19 +612,19 @@ if (savedHandle) {
   };
 
   const generateUniqueTitle = (): string => {
-    let index = 1;
-    let title = `Untitled ${index}`;
-    while (notes.some(n => n.title.toLowerCase() === title.toLowerCase())) {
-      index++;
-      title = `Untitled ${index}`;
-    }
-    return title;
-  };
+  let index = 1;
+  let title = `Untitled ${index}`;
+  while (notesByTitle.has(title.toLowerCase())) {
+    index++;
+    title = `Untitled ${index}`;
+  }
+  return title;
+};
 
   // Delete note
   const handleDeleteNote = async (id: string) => {
-    if (confirm("Are you sure you want to delete this note?")) {
-      const noteToDelete = notes.find(n => n.id === id);
+  if (confirm("Are you sure you want to delete this note?")) {
+    const noteToDelete = notesById.get(id);
       const filtered = notes.filter(n => n.id !== id);
       setNotes(filtered);
       deleteNote(id).catch(console.error);
@@ -657,7 +663,8 @@ if (savedHandle) {
   };
 
   // Update note content or title
-  const handleUpdateNote = async (id: string, updates: Partial<Note>) => {
+  // Update note content or title
+const handleUpdateNote = async (id: string, updates: Partial<Note>) => {
   // Prevent duplicate titles on rename
   if (updates.title !== undefined) {
     const newTitle = updates.title.replace(/[<>:"/\\|?*]/g, '').trim();
@@ -665,8 +672,8 @@ if (savedHandle) {
       delete updates.title;
     } else {
       updates.title = newTitle; // Ensure the sanitized title is what gets saved
-      const existing = notes.find(n => n.id !== id && n.title.trim().toLowerCase() === newTitle.toLowerCase());
-      if (existing) {
+      const existing = notesByTitle.get(newTitle.toLowerCase());
+      if (existing && existing.id !== id) {
         alert(`A note named "${newTitle}" already exists!`);
         return;
       }
@@ -674,7 +681,7 @@ if (savedHandle) {
   }
 
   let updatedNote: Note | null = null;
-  let oldNote: Note | null = notes.find(n => n.id === id) || null;
+  let oldNote: Note | null = notesById.get(id) || null;
   let filenameChanged = false;
 
   const updated = notes.map(note => {
@@ -744,14 +751,14 @@ if (savedHandle) {
 };
 
   const handleOpenDailyNote = () => {
-    const today = new Date().toISOString().split('T')[0];
-    const existing = notes.find(n => n.title.trim() === today);
-    if (existing) {
-      handleSelectNote(existing.id);
-    } else {
-      handleCreateNote("", today);
-    }
-  };
+  const today = new Date().toISOString().split('T')[0];
+  const existing = notesByTitle.get(today.toLowerCase());
+  if (existing) {
+    handleSelectNote(existing.id);
+  } else {
+    handleCreateNote("", today);
+  }
+};
 
   const handleOpenRandomNote = () => {
     if (notes.length === 0) return;
@@ -760,94 +767,93 @@ if (savedHandle) {
   };
 
   const handleWikilinkClick = (noteTitle: string) => {
-    const found = notes.find(n => n.title.trim().toLowerCase() === noteTitle.trim().toLowerCase());
-    if (found) {
-      handleSelectNote(found.id);
-    } else {
-      // Suggest creation of note with that title
-      const userConfirmed = confirm(`Note "${noteTitle}" does not exist. Would you like to create it?`);
-      if (userConfirmed) {
-        handleCreateNote("", noteTitle);
-      }
+  const found = notesByTitle.get(noteTitle.trim().toLowerCase());
+  if (found) {
+    handleSelectNote(found.id);
+  } else {
+    const userConfirmed = confirm(`Note "${noteTitle}" does not exist. Would you like to create it?`);
+    if (userConfirmed) {
+      handleCreateNote("", noteTitle);
     }
-  };
+  }
+};
 
   const handleExtractNote = async (
-    parentNoteId: string,
-    extractText: string,
-    editorMode: string,
-    selectionStart?: number,
-    selectionEnd?: number
-  ) => {
-    const parentNote = notes.find(n => n.id === parentNoteId);
-    if (!parentNote) return null;
-    
-    const cleanText = extractText.replace(/[#*`[\]{}]/g, "").trim();
-    let excerpt = cleanText.substring(0, 30).trim();
-    if (!excerpt) excerpt = "Extract";
-    
-    let index = 1;
-    let title = `Extract: ${excerpt}`;
-    while (notes.some(n => n.title.toLowerCase() === title.toLowerCase())) {
-      index++;
-      title = `Extract: ${excerpt} (${index})`;
-    }
-    
-    const filename = `${title}.md`;
-    const todayStr = new Date().toISOString().split("T")[0];
-    const newNoteContent = `---\nir_next_read: "${todayStr}"\nir_interval: 1\nir_ease: 2.5\nir_priority: 60\nir_last_offset: 0\n---\n# ${title}\n\nSource: [[${parentNote.title}]]\n\n${extractText}`;
-    
-    const newNote: Note = {
-      id: parentNote.path ? `${parentNote.path}/${filename}` : filename,
-      title: title,
-      content: newNoteContent,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      path: parentNote.path
-    };
-    
-    const linkStr = `![[${title}]]`;
-    let updatedParentContent = "";
-    
-    if (editorMode === "dynamic" || editorMode === "edit" || editorMode === "split") {
-      if (selectionStart !== undefined && selectionEnd !== undefined && selectionStart !== selectionEnd) {
-        const { frontmatter, body } = splitFrontmatter(parentNote.content);
-        const hideYamlActive = parentNote.content !== body;
-        const startsWithFm = parentNote.content.startsWith("---");
-        
-        if (startsWithFm && hideYamlActive) {
-          const newBody = body.substring(0, selectionStart) + linkStr + body.substring(selectionEnd);
-          updatedParentContent = frontmatter + newBody;
-        } else {
-          updatedParentContent = parentNote.content.substring(0, selectionStart) + linkStr + parentNote.content.substring(selectionEnd);
-        }
+  parentNoteId: string,
+  extractText: string,
+  editorMode: string,
+  selectionStart?: number,
+  selectionEnd?: number
+) => {
+  const parentNote = notesById.get(parentNoteId);
+  if (!parentNote) return null;
+
+  const cleanText = extractText.replace(/[#*`[\]{}]/g, "").trim();
+  let excerpt = cleanText.substring(0, 30).trim();
+  if (!excerpt) excerpt = "Extract";
+
+  let index = 1;
+  let title = `Extract: ${excerpt}`;
+  while (notesByTitle.has(title.toLowerCase())) {
+    index++;
+    title = `Extract: ${excerpt} (${index})`;
+  }
+
+  const filename = `${title}.md`;
+  const todayStr = new Date().toISOString().split("T")[0];
+  const newNoteContent = `---\nir_next_read: "${todayStr}"\nir_interval: 1\nir_ease: 2.5\nir_priority: 60\nir_last_offset: 0\n---\n# ${title}\n\nSource: [[${parentNote.title}]]\n\n${extractText}`;
+
+  const newNote: Note = {
+    id: parentNote.path ? `${parentNote.path}/${filename}` : filename,
+    title: title,
+    content: newNoteContent,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    path: parentNote.path
+  };
+
+  const linkStr = `![[${title}]]`;
+  let updatedParentContent = "";
+
+  if (editorMode === "dynamic" || editorMode === "edit" || editorMode === "split") {
+    if (selectionStart !== undefined && selectionEnd !== undefined && selectionStart !== selectionEnd) {
+      const { frontmatter, body } = splitFrontmatter(parentNote.content);
+      const hideYamlActive = parentNote.content !== body;
+      const startsWithFm = parentNote.content.startsWith("---");
+
+      if (startsWithFm && hideYamlActive) {
+        const newBody = body.substring(0, selectionStart) + linkStr + body.substring(selectionEnd);
+        updatedParentContent = frontmatter + newBody;
       } else {
-        const { frontmatter, body } = splitFrontmatter(parentNote.content);
-        const newBody = replacePlaintextInMarkdown(body, extractText, linkStr);
-        updatedParentContent = frontmatter ? frontmatter + newBody : newBody;
+        updatedParentContent = parentNote.content.substring(0, selectionStart) + linkStr + parentNote.content.substring(selectionEnd);
       }
     } else {
       const { frontmatter, body } = splitFrontmatter(parentNote.content);
       const newBody = replacePlaintextInMarkdown(body, extractText, linkStr);
       updatedParentContent = frontmatter ? frontmatter + newBody : newBody;
     }
-    
-    const updatedParentNote: Note = {
-      ...parentNote,
-      content: updatedParentContent,
-      updatedAt: new Date().toISOString()
-    };
-    
-    setNotes(prev => {
-      const replaced = prev.map(n => n.id === parentNoteId ? updatedParentNote : n);
-      return [...replaced, newNote];
-    });
-    
-    putNote(newNote).catch(console.error);
-    putNote(updatedParentNote).catch(console.error);
-    
-    return newNote;
+  } else {
+    const { frontmatter, body } = splitFrontmatter(parentNote.content);
+    const newBody = replacePlaintextInMarkdown(body, extractText, linkStr);
+    updatedParentContent = frontmatter ? frontmatter + newBody : newBody;
+  }
+
+  const updatedParentNote: Note = {
+    ...parentNote,
+    content: updatedParentContent,
+    updatedAt: new Date().toISOString()
   };
+
+  setNotes(prev => {
+    const replaced = prev.map(n => n.id === parentNoteId ? updatedParentNote : n);
+    return [...replaced, newNote];
+  });
+
+  putNote(newNote).catch(console.error);
+  putNote(updatedParentNote).catch(console.error);
+
+  return newNote;
+};
 
   // Export current list of notes as a single HTA/HTML file
   const handleExportHtml = () => {
@@ -862,8 +868,8 @@ if (savedHandle) {
   };
 
   const handleReviewCard = async (card: Flashcard, grade: "hard" | "good" | "easy") => {
-    const note = notes.find(n => n.id === card.noteId);
-    if (!note) return;
+  const note = notesById.get(card.noteId);
+  if (!note) return;
 
     const newContent = updateFlashcardInContent(note.content, card, grade);
     handleUpdateNote(note.id, { content: newContent });
@@ -881,7 +887,7 @@ if (savedHandle) {
 
   const dueCards = getDueCards(notes);
 
-  const currentNote = notes.find(n => n.id === currentNoteId);
+  const currentNote = notesById.get(currentNoteId);
   const wordCount = currentNote ? (currentNote.content || "").trim().split(/\s+/).filter(Boolean).length : 0;
   const charCount = currentNote ? (currentNote.content || "").length : 0;
 
@@ -1083,7 +1089,7 @@ if (savedHandle) {
               </div>
               <div className="flex overflow-x-auto select-none gap-1 scrollbar-hide -mb-[1px] w-full">
                 {openNoteIds.map((id, index) => {
-                  const n = notes.find(n => n.id === id);
+                  const n = notesById.get(id);
                   if (!n) return null;
                   const isActive = id === currentNoteId;
                   const prevIsActive = index > 0 && openNoteIds[index - 1] === currentNoteId;
