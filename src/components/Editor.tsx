@@ -515,8 +515,12 @@ export default function Editor({
     if (wikilinkEl) {
       const noteTitleEncoded = wikilinkEl.getAttribute("data-note");
       if (noteTitleEncoded) {
+        e.preventDefault();
+        e.stopPropagation();
         const noteTitle = decodeURIComponent(noteTitleEncoded);
-        onWikilinkClick(noteTitle);
+        if (onWikilinkClick) {
+          onWikilinkClick(noteTitle);
+        }
       }
       return;
     }
