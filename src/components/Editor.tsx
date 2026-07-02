@@ -46,6 +46,8 @@ interface EditorProps {
   onUpdateNote: (id: string, updates: Partial<Note>) => void;
   onSelectNote: (id: string, options?: { startReading?: boolean }) => void;
   shouldRestoreScroll?: boolean;
+  sessionOffset?: number;
+  onSaveSessionOffset?: (noteId: string, offset: number) => void;
   onWikilinkClick?: (noteTitle: string) => void;
   onExtractNote?: (
     parentNoteId: string,
@@ -67,6 +69,8 @@ export default function Editor({
   isZenMode,
   onExtractNote,
   shouldRestoreScroll,
+  sessionOffset,
+  onSaveSessionOffset,
 }: EditorProps) {
   const renderStringWithLinks = (text: string) => {
     const parts = [];
@@ -279,7 +283,6 @@ export default function Editor({
   const hasRestoredScrollRef = useRef(false);
 
   const handleEditorCaretChange = () => {
-    if (!irMetadata) return;
     let offset = 0;
     if (mode === "dynamic" && wysiwygRef.current) {
       offset = wysiwygRef.current.getCaretOffset();
@@ -294,24 +297,28 @@ export default function Editor({
   }, [note.id]);
 
   useEffect(() => {
-    lastOffsetRef.current = irMetadata ? irMetadata.lastOffset : 0;
+    const targetOffset = shouldRestoreScroll 
+      ? (irMetadata ? irMetadata.lastOffset : 0) 
+      : (sessionOffset || 0);
+
+    lastOffsetRef.current = targetOffset;
     
     let timer: NodeJS.Timeout;
-    if (shouldRestoreScroll && !hasRestoredScrollRef.current && irMetadata && irMetadata.lastOffset > 0) {
+    if (targetOffset > 0 && !hasRestoredScrollRef.current) {
       hasRestoredScrollRef.current = true;
       timer = setTimeout(() => {
         if (mode === "dynamic" && wysiwygRef.current) {
-          wysiwygRef.current.setCaretOffset(irMetadata.lastOffset);
+          wysiwygRef.current.setCaretOffset(targetOffset);
         } else if (textareaRef.current) {
           const tx = textareaRef.current;
           tx.focus();
-          tx.selectionStart = irMetadata.lastOffset;
-          tx.selectionEnd = irMetadata.lastOffset;
+          tx.selectionStart = targetOffset;
+          tx.selectionEnd = targetOffset;
           
           // Scroll textarea to the caret position based on character index proportion
           const textLen = tx.value.length;
           if (textLen > 0) {
-            const percentage = irMetadata.lastOffset / textLen;
+            const percentage = targetOffset / textLen;
             tx.scrollTop = (tx.scrollHeight * percentage) - (tx.clientHeight / 2);
           }
         }
@@ -320,8 +327,11 @@ export default function Editor({
     
     return () => {
       if (timer) clearTimeout(timer);
+      if (lastOffsetRef.current > 0) {
+        onSaveSessionOffset?.(note.id, lastOffsetRef.current);
+      }
     };
-  }, [note.id, shouldRestoreScroll, mode]);
+  }, [note.id, shouldRestoreScroll, mode, sessionOffset]);
 
   const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {

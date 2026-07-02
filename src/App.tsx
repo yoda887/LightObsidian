@@ -122,6 +122,11 @@ const notesByTitle = useMemo(() => {
   
   const [isZenMode, setIsZenMode] = useState<boolean>(false);
   const [restoreScrollNoteId, setRestoreScrollNoteId] = useState<string | null>(null);
+  const [sessionOffsets, setSessionOffsets] = useState<Record<string, number>>({});
+
+  const handleSaveSessionOffset = (noteId: string, offset: number) => {
+    setSessionOffsets(prev => ({ ...prev, [noteId]: offset }));
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -517,7 +522,7 @@ if (savedHandle) {
       setIsVaultLoading(true);
       try {
         // Строим карту существующих заметок для getFilesRecursively
-        const existingMap = new Map(notesRef.current.map(n => [n.id, n]));
+        const existingMap = new Map<string, Note>(notesRef.current.map(n => [n.id, n]));
         const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(vaultHandle, "", existingMap);
 
         setFolders(loadedFolders);
@@ -1163,6 +1168,8 @@ const handleUpdateNote = async (id: string, updates: Partial<Note>) => {
                 onWikilinkClick={handleWikilinkClick}
                 onExtractNote={handleExtractNote}
                 shouldRestoreScroll={restoreScrollNoteId === currentNoteId}
+                sessionOffset={sessionOffsets[currentNote.id] || 0}
+                onSaveSessionOffset={handleSaveSessionOffset}
               />
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center space-y-4 p-8 text-center bg-slate-50 dark:bg-zinc-950">
