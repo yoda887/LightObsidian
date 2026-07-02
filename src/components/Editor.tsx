@@ -44,7 +44,8 @@ interface EditorProps {
   settings: AppSettings;
   isZenMode?: boolean;
   onUpdateNote: (id: string, updates: Partial<Note>) => void;
-  onSelectNote: (id: string) => void;
+  onSelectNote: (id: string, options?: { startReading?: boolean }) => void;
+  shouldRestoreScroll?: boolean;
   onWikilinkClick?: (noteTitle: string) => void;
   onExtractNote?: (
     parentNoteId: string,
@@ -65,6 +66,7 @@ export default function Editor({
   onWikilinkClick,
   isZenMode,
   onExtractNote,
+  shouldRestoreScroll,
 }: EditorProps) {
   const renderStringWithLinks = (text: string) => {
     const parts = [];
@@ -247,7 +249,8 @@ export default function Editor({
     const newContent = updateYamlMetadata(note.content, {
       ir_next_read: nextReadStr,
       ir_interval: newInterval,
-      ir_ease: newEase
+      ir_ease: newEase,
+      ir_last_offset: lastOffsetRef.current
     });
     
     onUpdateNote(note.id, { content: newContent });
@@ -273,6 +276,7 @@ export default function Editor({
   };
 
   const lastOffsetRef = useRef(0);
+  const hasRestoredScrollRef = useRef(false);
 
   const handleEditorCaretChange = () => {
     if (!irMetadata) return;
@@ -286,31 +290,38 @@ export default function Editor({
   };
 
   useEffect(() => {
+    hasRestoredScrollRef.current = false;
+  }, [note.id]);
+
+  useEffect(() => {
     lastOffsetRef.current = irMetadata ? irMetadata.lastOffset : 0;
     
     let timer: NodeJS.Timeout;
-    if (irMetadata && irMetadata.lastOffset > 0) {
+    if (shouldRestoreScroll && !hasRestoredScrollRef.current && irMetadata && irMetadata.lastOffset > 0) {
+      hasRestoredScrollRef.current = true;
       timer = setTimeout(() => {
         if (mode === "dynamic" && wysiwygRef.current) {
           wysiwygRef.current.setCaretOffset(irMetadata.lastOffset);
         } else if (textareaRef.current) {
-          textareaRef.current.focus();
-          textareaRef.current.selectionStart = irMetadata.lastOffset;
-          textareaRef.current.selectionEnd = irMetadata.lastOffset;
+          const tx = textareaRef.current;
+          tx.focus();
+          tx.selectionStart = irMetadata.lastOffset;
+          tx.selectionEnd = irMetadata.lastOffset;
+          
+          // Scroll textarea to the caret position based on character index proportion
+          const textLen = tx.value.length;
+          if (textLen > 0) {
+            const percentage = irMetadata.lastOffset / textLen;
+            tx.scrollTop = (tx.scrollHeight * percentage) - (tx.clientHeight / 2);
+          }
         }
       }, 150);
     }
     
     return () => {
       if (timer) clearTimeout(timer);
-      if (lastOffsetRef.current > 0 && irMetadata) {
-        const newContent = updateYamlMetadata(note.content, {
-          ir_last_offset: lastOffsetRef.current
-        });
-        onUpdateNote(note.id, { content: newContent });
-      }
     };
-  }, [note.id]);
+  }, [note.id, shouldRestoreScroll, mode]);
 
   const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {

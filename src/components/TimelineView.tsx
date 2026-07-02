@@ -4,7 +4,7 @@ import { Clock } from "lucide-react";
 
 interface TimelineViewProps {
   notes: Note[];
-  onSelectNote: (id: string) => void;
+  onSelectNote: (id: string, options?: { startReading?: boolean }) => void;
 }
 
 export default function TimelineView({ notes, onSelectNote }: TimelineViewProps) {

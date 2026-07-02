@@ -300,6 +300,12 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
       range.collapse(true);
       sel.removeAllRanges();
       sel.addRange(range);
+      
+      // Scroll parent element into view so the reading position is visible
+      const parentEl = nodeToFocus.parentElement;
+      if (parentEl) {
+        parentEl.scrollIntoView({ block: 'center', behavior: 'auto' });
+      }
     }
   };
 

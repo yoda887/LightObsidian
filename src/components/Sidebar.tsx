@@ -33,7 +33,7 @@ interface SidebarProps {
   notes: Note[];
   folders?: string[]; // Исправлено: возвращено string[] (как было в оригинале)
   currentNoteId: string; // Исправлено: убран | null
-  onSelectNote: (id: string) => void;
+  onSelectNote: (id: string, options?: { startReading?: boolean }) => void;
   onCreateNote: (title?: string) => void; // Исправлено: title?: string
   onDeleteNote: (id: string) => void;
   onExportHtml: () => void; // Исправлено: убран аргумент note
@@ -159,7 +159,7 @@ const FileTreeNodeComponent = ({
   node: TreeNode;
   depth: number;
   currentNoteId: string;
-  onSelectNote: (id: string) => void;
+  onSelectNote: (id: string, options?: { startReading?: boolean }) => void;
   onDeleteNote: (id: string) => void;
   searchActive: boolean;
 }) => {

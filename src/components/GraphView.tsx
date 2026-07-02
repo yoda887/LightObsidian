@@ -10,7 +10,7 @@ import { extractWikilinks } from "../utils";
 interface GraphViewProps {
   notes: Note[];
   currentNoteId: string;
-  onSelectNote: (id: string) => void;
+  onSelectNote: (id: string, options?: { startReading?: boolean }) => void;
 }
 
 export default function GraphView({ notes, currentNoteId, onSelectNote }: GraphViewProps) {

@@ -121,6 +121,7 @@ const notesByTitle = useMemo(() => {
   });
   
   const [isZenMode, setIsZenMode] = useState<boolean>(false);
+  const [restoreScrollNoteId, setRestoreScrollNoteId] = useState<string | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -552,10 +553,15 @@ if (savedHandle) {
   };
 
   // Select note
-  const handleSelectNote = (id: string) => {
+  const handleSelectNote = (id: string, options?: { startReading?: boolean }) => {
     setCurrentNoteId(id);
     setOpenNoteIds(prev => prev.includes(id) ? prev : [...prev, id]);
     if (appMode === "graph") setAppMode("split");
+    if (options?.startReading) {
+      setRestoreScrollNoteId(id);
+    } else {
+      setRestoreScrollNoteId(null);
+    }
   };
 
   // Create a new note
@@ -1156,6 +1162,7 @@ const handleUpdateNote = async (id: string, updates: Partial<Note>) => {
                 onSelectNote={handleSelectNote}
                 onWikilinkClick={handleWikilinkClick}
                 onExtractNote={handleExtractNote}
+                shouldRestoreScroll={restoreScrollNoteId === currentNoteId}
               />
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center space-y-4 p-8 text-center bg-slate-50 dark:bg-zinc-950">

@@ -14,7 +14,7 @@ interface RightSidebarProps {
   onClearFocusQueue: () => void;
   initialTab?: "links" | "tags" | "context" | "focus" | "graph" | "stats" | "skills" | "reading";
   onClose: () => void;
-  onSelectNote: (id: string) => void;
+  onSelectNote: (id: string, options?: { startReading?: boolean }) => void;
   onUpdateNote?: (id: string, updates: Partial<Note>) => void;
 }
 
@@ -636,7 +636,7 @@ export default function RightSidebar({
                       <span>Ease: {item.ease.toFixed(1)}</span>
                     </div>
                     <button
-                      onClick={() => onSelectNote(item.note.id)}
+                      onClick={() => onSelectNote(item.note.id, { startReading: true })}
                       className="w-full mt-1 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 rounded-md text-xs font-semibold cursor-pointer transition-all text-center flex items-center justify-center gap-1.5"
                     >
                       <BookOpen className="w-3.5 h-3.5" />
