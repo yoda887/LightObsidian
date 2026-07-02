@@ -35,6 +35,7 @@ import {
   Hash,
   Type,
   List,
+  CheckCircle2,
 } from "lucide-react";
 
 interface EditorProps {
@@ -180,6 +181,12 @@ export default function Editor({
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [isYamlCollapsed, setIsYamlCollapsed] = useState(settings.hideYaml ?? false);
   const [showCardDropdown, setShowCardDropdown] = useState(false);
+  const [scheduledMessage, setScheduledMessage] = useState<string | null>(null);
+
+  // Reset scheduled message when note changes
+  useEffect(() => {
+    setScheduledMessage(null);
+  }, [note.id]);
 
   // Sync collapsed state when setting changes
   useEffect(() => {
@@ -233,6 +240,7 @@ export default function Editor({
         ir_last_offset: null
       });
       onUpdateNote(note.id, { content: newContent });
+      setScheduledMessage("Finished reading");
       return;
     }
     
@@ -261,6 +269,7 @@ export default function Editor({
     });
     
     onUpdateNote(note.id, { content: newContent });
+    setScheduledMessage(`Scheduled for ${nextReadStr} (+${newInterval}d)`);
   };
 
   const handleExtractSelection = async () => {
@@ -1067,7 +1076,7 @@ export default function Editor({
         </div>
       )}
 
-      {irMetadata && (
+      {(irMetadata || scheduledMessage) && (
         <div className="bg-slate-50 dark:bg-zinc-900 border-t border-slate-200 dark:border-zinc-800 p-3 px-6 flex items-center justify-between shrink-0 select-none">
           <div className="flex items-center space-x-2">
             <span className="p-1.5 bg-indigo-500 rounded text-white flex items-center justify-center">
@@ -1076,41 +1085,54 @@ export default function Editor({
             <div>
               <div className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">Reading Session</div>
               <div className="text-xs font-semibold text-slate-700 dark:text-zinc-300">
-                Interval: {irMetadata.interval}d | Ease: {irMetadata.ease.toFixed(1)}
+                {scheduledMessage ? (
+                  <span className="text-emerald-600 dark:text-emerald-400">Completed</span>
+                ) : (
+                  `Interval: ${irMetadata?.interval}d | Ease: ${irMetadata?.ease.toFixed(1)}`
+                )}
               </div>
             </div>
           </div>
           
           <div className="flex items-center space-x-2">
-            <button
-              onClick={() => handleScheduleReading("hard")}
-              className="px-3 py-1.5 bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-xs font-semibold rounded-md border border-red-200 dark:border-red-800/50 cursor-pointer transition-colors"
-              title="Read again soon (1 day)"
-            >
-              Soon (Hard)
-            </button>
-            <button
-              onClick={() => handleScheduleReading("good")}
-              className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 text-xs font-semibold rounded-md border border-indigo-200 dark:border-indigo-800/50 cursor-pointer transition-colors"
-              title={`Next reading in ${Math.max(2, Math.round(irMetadata.interval * irMetadata.ease))} days`}
-            >
-              Later (Good)
-            </button>
-            <button
-              onClick={() => handleScheduleReading("easy")}
-              className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 text-xs font-semibold rounded-md border border-emerald-200 dark:border-emerald-800/50 cursor-pointer transition-colors"
-              title={`Next reading in ${Math.max(3, Math.round(irMetadata.interval * irMetadata.ease * 1.5))} days`}
-            >
-              Easy
-            </button>
-            <div className="h-4 w-px bg-slate-200 dark:bg-zinc-800" />
-            <button
-              onClick={() => handleScheduleReading("done")}
-              className="px-3 py-1.5 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 text-xs font-semibold rounded-md cursor-pointer transition-colors"
-              title="Remove from Reading Queue"
-            >
-              Finish (Done)
-            </button>
+            {scheduledMessage ? (
+              <div className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold rounded-md border border-emerald-200 dark:border-emerald-800/50 flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4" />
+                {scheduledMessage}
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => handleScheduleReading("hard")}
+                  className="px-3 py-1.5 bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-xs font-semibold rounded-md border border-red-200 dark:border-red-800/50 cursor-pointer transition-colors"
+                  title="Read again soon (1 day)"
+                >
+                  Soon (Hard)
+                </button>
+                <button
+                  onClick={() => handleScheduleReading("good")}
+                  className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 text-xs font-semibold rounded-md border border-indigo-200 dark:border-indigo-800/50 cursor-pointer transition-colors"
+                  title={`Next reading in ${Math.max(2, Math.round((irMetadata?.interval || 1) * (irMetadata?.ease || 2.5)))} days`}
+                >
+                  Later (Good)
+                </button>
+                <button
+                  onClick={() => handleScheduleReading("easy")}
+                  className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 text-xs font-semibold rounded-md border border-emerald-200 dark:border-emerald-800/50 cursor-pointer transition-colors"
+                  title={`Next reading in ${Math.max(3, Math.round((irMetadata?.interval || 1) * (irMetadata?.ease || 2.5) * 1.5))} days`}
+                >
+                  Easy
+                </button>
+                <div className="h-4 w-px bg-slate-200 dark:bg-zinc-800" />
+                <button
+                  onClick={() => handleScheduleReading("done")}
+                  className="px-3 py-1.5 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 text-xs font-semibold rounded-md cursor-pointer transition-colors"
+                  title="Remove from Reading Queue"
+                >
+                  Finish (Done)
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
