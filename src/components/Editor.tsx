@@ -174,6 +174,7 @@ export default function Editor({
   const [localTitle, setLocalTitle] = useState(note.title);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const wysiwygRef = useRef<CustomWYSIWYGRef | null>(null);
+  const previewContainerRef = useRef<HTMLDivElement | null>(null);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [isYamlCollapsed, setIsYamlCollapsed] = useState(settings.hideYaml ?? false);
   const [showCardDropdown, setShowCardDropdown] = useState(false);
@@ -318,17 +319,26 @@ export default function Editor({
       timer = setTimeout(() => {
         if (mode === "dynamic" && wysiwygRef.current) {
           wysiwygRef.current.setCaretOffset(targetOffset);
-        } else if (textareaRef.current) {
-          const tx = textareaRef.current;
-          tx.focus();
-          tx.selectionStart = targetOffset;
-          tx.selectionEnd = targetOffset;
-          
-          // Scroll textarea to the caret position based on character index proportion
-          const textLen = tx.value.length;
-          if (textLen > 0) {
-            const percentage = targetOffset / textLen;
-            tx.scrollTop = (tx.scrollHeight * percentage) - (tx.clientHeight / 2);
+        } else {
+          if (textareaRef.current) {
+            const tx = textareaRef.current;
+            tx.focus();
+            tx.selectionStart = targetOffset;
+            tx.selectionEnd = targetOffset;
+            
+            const textLen = tx.value.length;
+            if (textLen > 0) {
+              const percentage = targetOffset / textLen;
+              tx.scrollTop = (tx.scrollHeight * percentage) - (tx.clientHeight / 2);
+            }
+          }
+          if (previewContainerRef.current) {
+            const el = previewContainerRef.current;
+            const textLen = note.content.length;
+            if (textLen > 0) {
+              const percentage = targetOffset / textLen;
+              el.scrollTop = (el.scrollHeight * percentage) - (el.clientHeight / 2);
+            }
           }
         }
       }, 0);
@@ -849,10 +859,15 @@ export default function Editor({
         {/* PREVIEW PANE */}
         {(mode === "preview" || mode === "split") && (
           <div 
+            ref={previewContainerRef}
             className="flex-1 flex flex-col p-4 sm:p-6 overflow-y-auto bg-slate-50 dark:bg-zinc-950/20"
             onClick={handlePreviewClick}
             onMouseDown={handlePreviewMouseDown}
             onMouseUp={handlePreviewMouseUp}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              handleScroll(el.scrollTop, el.scrollHeight, el.clientHeight);
+            }}
           >
             {/* Note Title Input */}
             <input
