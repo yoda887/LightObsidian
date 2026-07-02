@@ -951,6 +951,8 @@ const handleUpdateNote = async (id: string, updates: Partial<Note>) => {
             <HelpCircle className="w-4 h-4" />
           </button>
           
+          <div className="w-px h-4 mx-1 bg-slate-200 dark:bg-zinc-800"></div>
+          
           <button
             onClick={() => setIsReviewOpen(true)}
             className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded transition-colors cursor-pointer relative"
@@ -1012,6 +1014,7 @@ const handleUpdateNote = async (id: string, updates: Partial<Note>) => {
               <Columns className="w-3.5 h-3.5" />
               <span className="hidden md:inline">Split</span>
             </button>
+            <div className="w-px h-4 mx-1 my-auto bg-slate-300 dark:bg-zinc-700"></div>
             <button
               onClick={() => setAppMode("graph")}
               className={`flex items-center space-x-1.5 px-3 py-1 rounded text-xs font-semibold transition-all cursor-pointer ${
