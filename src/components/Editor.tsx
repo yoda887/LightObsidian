@@ -182,10 +182,12 @@ export default function Editor({
   const [isYamlCollapsed, setIsYamlCollapsed] = useState(settings.hideYaml ?? false);
   const [showCardDropdown, setShowCardDropdown] = useState(false);
   const [scheduledMessage, setScheduledMessage] = useState<string | null>(null);
+  const [showEarlyReview, setShowEarlyReview] = useState(false);
 
-  // Reset scheduled message when note changes
+  // Reset scheduled message and early review state when note changes
   useEffect(() => {
     setScheduledMessage(null);
+    setShowEarlyReview(false);
   }, [note.id]);
 
   // Sync collapsed state when setting changes
@@ -217,12 +219,15 @@ export default function Editor({
     if (!frontmatter) return null;
     const metadata = parseYamlMetadata(frontmatter);
     if (metadata.ir_next_read) {
+      const nextReadVal = String(metadata.ir_next_read).trim();
+      const todayStr = new Date().toISOString().split("T")[0];
       return {
-        nextRead: String(metadata.ir_next_read),
+        nextRead: nextReadVal,
         interval: parseInt(String(metadata.ir_interval)) || 1,
         ease: parseFloat(String(metadata.ir_ease)) || 2.5,
         priority: parseInt(String(metadata.ir_priority)) || 50,
-        lastOffset: parseInt(String(metadata.ir_last_offset)) || 0
+        lastOffset: parseInt(String(metadata.ir_last_offset)) || 0,
+        isDue: nextReadVal <= todayStr
       };
     }
     return null;
@@ -1088,7 +1093,7 @@ export default function Editor({
                 {scheduledMessage ? (
                   <span className="text-emerald-600 dark:text-emerald-400">Completed</span>
                 ) : (
-                  `Interval: ${irMetadata?.interval}d | Ease: ${irMetadata?.ease.toFixed(1)}`
+                  <>{!irMetadata?.isDue && <span className="text-slate-500 dark:text-zinc-500 mr-2">Scheduled: {irMetadata?.nextRead}</span>}Interval: {irMetadata?.interval}d | Ease: {irMetadata?.ease.toFixed(1)}</>
                 )}
               </div>
             </div>
@@ -1100,6 +1105,14 @@ export default function Editor({
                 <CheckCircle2 className="w-4 h-4" />
                 {scheduledMessage}
               </div>
+            ) : (!irMetadata?.isDue && !showEarlyReview) ? (
+              <button
+                onClick={() => setShowEarlyReview(true)}
+                className="px-3 py-1.5 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 text-xs font-semibold rounded-md cursor-pointer transition-colors"
+                title="Perform early review"
+              >
+                Review Early
+              </button>
             ) : (
               <>
                 <button
