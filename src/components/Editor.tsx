@@ -292,6 +292,15 @@ export default function Editor({
     lastOffsetRef.current = offset;
   };
 
+  const handleScroll = (scrollTop: number, scrollHeight: number, clientHeight: number) => {
+    const textLen = note.content.length;
+    if (textLen > 0 && scrollHeight > clientHeight) {
+      const visibleCenter = scrollTop + clientHeight / 2;
+      const percentage = visibleCenter / scrollHeight;
+      lastOffsetRef.current = Math.min(textLen, Math.max(0, Math.round(textLen * percentage)));
+    }
+  };
+
   useEffect(() => {
     hasRestoredScrollRef.current = false;
   }, [note.id]);
@@ -322,7 +331,7 @@ export default function Editor({
             tx.scrollTop = (tx.scrollHeight * percentage) - (tx.clientHeight / 2);
           }
         }
-      }, 150);
+      }, 0);
     }
     
     return () => {
@@ -826,6 +835,10 @@ export default function Editor({
               onKeyDown={handleTextareaKeyDown}
               onKeyUp={handleEditorCaretChange}
               onClick={handleEditorCaretChange}
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                handleScroll(el.scrollTop, el.scrollHeight, el.clientHeight);
+              }}
               placeholder="Start writing... Type [[Other Note]] to create/link notes."
               className="flex-1 w-full bg-transparent border-none outline-none resize-none focus:ring-0 text-sm leading-relaxed overflow-y-auto text-slate-800 dark:text-zinc-200 placeholder-slate-300 dark:placeholder-zinc-700"
               style={{ fontFamily: 'var(--font-editor, inherit)' }}
@@ -953,6 +966,7 @@ export default function Editor({
                 content={settings.hideYaml ? body : note.content} 
                 notes={notes}
                 isZenMode={isZenMode}
+                onScroll={handleScroll}
                 onChange={(newContent) => {
                   if (settings.hideYaml) {
                     handleBodyChange(newContent);

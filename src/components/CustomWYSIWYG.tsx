@@ -14,6 +14,7 @@ interface CustomWYSIWYGProps {
   onChange: (markdown: string) => void;
   onWikilinkClick: (title: string) => void;
   isZenMode?: boolean;
+  onScroll?: (scrollTop: number, scrollHeight: number, clientHeight: number) => void;
 }
 
 interface AutocompleteState {
@@ -124,7 +125,7 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
 };
 
 export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
-  ({ content, notes, onChange, onWikilinkClick, isZenMode }, ref) => {
+  ({ content, notes, onChange, onWikilinkClick, isZenMode, onScroll }, ref) => {
     const editorRef = useRef<HTMLDivElement>(null);
     const isComposing = useRef(false);
     const previousContent = useRef(content);
@@ -593,6 +594,10 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
         onCompositionEnd={() => {
           isComposing.current = false;
           handleInput();
+        }}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          onScroll?.(el.scrollTop, el.scrollHeight, el.clientHeight);
         }}
         className="custom-wysiwyg w-full h-full px-4 sm:px-6 pb-4 sm:pb-6 pt-0 overflow-y-auto outline-none whitespace-pre-wrap text-sm leading-relaxed text-slate-800 dark:text-zinc-200"
         style={{ fontFamily: 'var(--font-editor, inherit)' }}
