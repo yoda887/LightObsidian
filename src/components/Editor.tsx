@@ -327,6 +327,7 @@ export default function Editor({
       timer = setTimeout(() => {
         if (mode === "dynamic" && wysiwygRef.current) {
           wysiwygRef.current.setCaretOffset(targetOffset);
+          wysiwygRef.current.scrollToOffset(targetOffset);
         } else {
           if (textareaRef.current) {
             const tx = textareaRef.current;

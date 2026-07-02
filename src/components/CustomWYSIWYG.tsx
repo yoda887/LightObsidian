@@ -6,6 +6,7 @@ export interface CustomWYSIWYGRef {
   getCaretOffset: () => number;
   setCaretOffset: (offset: number) => void;
   replaceSelection: (replacement: string) => void;
+  scrollToOffset: (offset: number) => void;
 }
 
 interface CustomWYSIWYGProps {
@@ -213,6 +214,15 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
     },
     getCaretOffset: () => getCaretOffset(),
     setCaretOffset: (offset: number) => setCaretOffset(offset),
+    scrollToOffset: (offset: number) => {
+      const el = editorRef.current;
+      if (!el) return;
+      const textLen = el.textContent?.length || 0;
+      if (textLen > 0) {
+        const percentage = offset / textLen;
+        el.scrollTop = (el.scrollHeight * percentage) - (el.clientHeight / 2);
+      }
+    },
     replaceSelection: (replacement: string) => {
       const el = editorRef.current;
       if (!el) return;
@@ -302,10 +312,10 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
       sel.removeAllRanges();
       sel.addRange(range);
       
-      // Scroll parent element into view so the reading position is visible
+      // Scroll parent element into view so the reading position is visible (fallback for typing, omitted precise restore)
       const parentEl = nodeToFocus.parentElement;
       if (parentEl) {
-        parentEl.scrollIntoView({ block: 'center', behavior: 'auto' });
+        parentEl.scrollIntoView({ block: 'nearest', behavior: 'auto' });
       }
     }
   };
