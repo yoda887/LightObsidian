@@ -58,9 +58,9 @@ export async function parseMarkdownToHtml(content: string, notes: Note[] = [], d
         childContent = childContent.replace(/^Source:\s+\[\[[^\]]*\]\](?:\r?\n)*/m, "");
       }
       const parsedChild = await parseMarkdownToHtml(childContent, notes, depth + 1);
-      embedHtml = `<div class="transclusion border-l-4 border-indigo-500 pl-4 py-2 my-4 bg-slate-50 dark:bg-zinc-900 rounded-r shadow-sm"><div class="text-[10px] font-bold text-indigo-500 mb-2 uppercase tracking-widest">${cleanTarget}</div><div class="embed-content">${parsedChild}</div></div>`;
+      embedHtml = `<div class="transclusion border-l-4 border-indigo-500 pl-4 py-2 my-4 bg-slate-50 dark:bg-zinc-900 rounded-r shadow-sm"><div class="text-[10px] font-bold text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 mb-2 uppercase tracking-widest cursor-pointer transition-colors inline-flex items-center gap-1" data-note="${encodeURIComponent(cleanTarget)}" title="Open note"><span class="text-xs">🔗</span> ${cleanTarget}</div><div class="embed-content">${parsedChild}</div></div>`;
     } else {
-      embedHtml = `<div class="transclusion border-l-4 border-slate-300 dark:border-zinc-700 pl-4 py-2 my-4 text-slate-500 dark:text-zinc-500 text-sm italic bg-slate-50 dark:bg-zinc-900 rounded-r">Note "${cleanTarget}" not found.</div>`;
+      embedHtml = `<div class="transclusion border-l-4 border-slate-300 dark:border-zinc-700 pl-4 py-2 my-4 text-slate-500 dark:text-zinc-500 text-sm italic bg-slate-50 dark:bg-zinc-900 rounded-r cursor-pointer hover:text-slate-700 dark:hover:text-zinc-300 transition-colors inline-flex items-center gap-1 w-full" data-note="${encodeURIComponent(cleanTarget)}" title="Click to create"><span class="text-xs">🔗</span> Note "${cleanTarget}" not found. Click to create.</div>`;
     }
     content = content.replace(match[0], embedHtml);
   }
