@@ -46,6 +46,7 @@ interface EditorProps {
   onUpdateNote: (id: string, updates: Partial<Note>) => void;
   onSelectNote: (id: string, options?: { startReading?: boolean }) => void;
   shouldRestoreScroll?: boolean;
+  restoreScrollKey?: number;
   sessionOffset?: number;
   onSaveSessionOffset?: (noteId: string, offset: number) => void;
   onWikilinkClick?: (noteTitle: string) => void;
@@ -69,6 +70,7 @@ export default function Editor({
   isZenMode,
   onExtractNote,
   shouldRestoreScroll,
+  restoreScrollKey,
   sessionOffset,
   onSaveSessionOffset,
 }: EditorProps) {
@@ -305,6 +307,12 @@ export default function Editor({
   useEffect(() => {
     hasRestoredScrollRef.current = false;
   }, [note.id]);
+
+  useEffect(() => {
+    if (shouldRestoreScroll) {
+      hasRestoredScrollRef.current = false;
+    }
+  }, [restoreScrollKey]);
 
   useEffect(() => {
     const targetOffset = shouldRestoreScroll 

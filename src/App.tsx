@@ -122,6 +122,7 @@ const notesByTitle = useMemo(() => {
   
   const [isZenMode, setIsZenMode] = useState<boolean>(false);
   const [restoreScrollNoteId, setRestoreScrollNoteId] = useState<string | null>(null);
+  const [restoreScrollKey, setRestoreScrollKey] = useState(0);
   const [sessionOffsets, setSessionOffsets] = useState<Record<string, number>>({});
 
   const handleSaveSessionOffset = (noteId: string, offset: number) => {
@@ -564,6 +565,7 @@ if (savedHandle) {
     if (appMode === "graph") setAppMode("split");
     if (options?.startReading) {
       setRestoreScrollNoteId(id);
+      setRestoreScrollKey(prev => prev + 1);
     } else {
       setRestoreScrollNoteId(null);
     }
@@ -1168,6 +1170,7 @@ const handleUpdateNote = async (id: string, updates: Partial<Note>) => {
                 onWikilinkClick={handleWikilinkClick}
                 onExtractNote={handleExtractNote}
                 shouldRestoreScroll={restoreScrollNoteId === currentNoteId}
+                restoreScrollKey={restoreScrollKey}
                 sessionOffset={sessionOffsets[currentNote.id] || 0}
                 onSaveSessionOffset={handleSaveSessionOffset}
               />
