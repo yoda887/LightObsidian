@@ -354,7 +354,7 @@ export default function Editor({
     
     return () => {
       if (timer) clearTimeout(timer);
-      if (lastOffsetRef.current > 0) {
+      if (lastOffsetRef.current > 0 && !shouldRestoreScroll) {
         onSaveSessionOffset?.(note.id, lastOffsetRef.current);
       }
     };
