@@ -55,6 +55,11 @@ interface EditorProps {
     parentNoteId: string,
     extractText: string,
     editorMode: string,
+    options: {
+      customTitle: string;
+      asEmbed: boolean;
+      nearestHeading: string | null;
+    },
     selectionStart?: number,
     selectionEnd?: number
   ) => Promise<Note | null>;
@@ -288,7 +293,45 @@ export default function Editor({
       end = textareaRef.current.selectionEnd;
     }
     
-    const newNote = await onExtractNote(note.id, selectedText, mode, start, end);
+    // 1. Calculate default title
+    const cleanText = selectedText.replace(/[#*`[\]{}]/g, "").trim();
+    let excerpt = cleanText.substring(0, 30).trim();
+    if (!excerpt) excerpt = "Extract";
+    const defaultTitle = `Extract: ${excerpt}`;
+    
+    // 2. Prompt for title
+    const userInput = window.prompt("Enter a title for this extract (or leave as default):", defaultTitle);
+    if (userInput === null) return; // User cancelled
+    const customTitle = userInput.trim() || defaultTitle;
+    
+    // 3. Confirm Embed vs Link
+    const asEmbed = window.confirm("Insert as an Embedded note?\n\n[OK] = Embed (![[...]])\n[Cancel] = Link ([[...]])");
+    
+    // 4. Find nearest heading for context
+    let nearestHeading: string | null = null;
+    let textBefore = "";
+    if (start !== undefined && textareaRef.current) {
+      textBefore = textareaRef.current.value.substring(0, start);
+    } else {
+      const matchIndex = note.content.indexOf(selectedText);
+      if (matchIndex !== -1) {
+        textBefore = note.content.substring(0, matchIndex);
+      }
+    }
+    if (textBefore) {
+      const headings = textBefore.match(/^#{1,6}\s+(.+)$/gm);
+      if (headings && headings.length > 0) {
+        nearestHeading = headings[headings.length - 1].replace(/^#{1,6}\s+/, "").trim();
+      }
+    }
+    
+    const options = {
+      customTitle,
+      asEmbed,
+      nearestHeading
+    };
+    
+    const newNote = await onExtractNote(note.id, selectedText, mode, options, start, end);
     if (!newNote) return;
     
     window.getSelection()?.removeAllRanges();

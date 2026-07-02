@@ -799,26 +799,35 @@ const handleUpdateNote = async (id: string, updates: Partial<Note>) => {
   parentNoteId: string,
   extractText: string,
   editorMode: string,
+  options: {
+    customTitle: string;
+    asEmbed: boolean;
+    nearestHeading: string | null;
+  },
   selectionStart?: number,
   selectionEnd?: number
 ) => {
   const parentNote = notesById.get(parentNoteId);
   if (!parentNote) return null;
 
-  const cleanText = extractText.replace(/[#*`[\]{}]/g, "").trim();
-  let excerpt = cleanText.substring(0, 30).trim();
-  if (!excerpt) excerpt = "Extract";
-
+  let title = options.customTitle;
   let index = 1;
-  let title = `Extract: ${excerpt}`;
+  // Make sure the title is unique
   while (notesByTitle.has(title.toLowerCase())) {
     index++;
-    title = `Extract: ${excerpt} (${index})`;
+    title = `${options.customTitle} (${index})`;
   }
 
   const filename = `${title}.md`;
   const todayStr = new Date().toISOString().split("T")[0];
-  const newNoteContent = `---\nir_next_read: "${todayStr}"\nir_interval: 1\nir_ease: 2.5\nir_priority: 60\nir_last_offset: 0\n---\n# ${title}\n\nSource: [[${parentNote.title}]]\n\n${extractText}`;
+  
+  // Format the source string
+  let sourceLink = `[[${parentNote.title}]]`;
+  if (options.nearestHeading) {
+    sourceLink = `[[${parentNote.title}#${options.nearestHeading}]]`;
+  }
+  
+  const newNoteContent = `---\nir_next_read: "${todayStr}"\nir_interval: 1\nir_ease: 2.5\nir_priority: 60\nir_last_offset: 0\nir_source: "${sourceLink}"\n---\n${extractText}`;
 
   const newNote: Note = {
     id: parentNote.path ? `${parentNote.path}/${filename}` : filename,
@@ -829,7 +838,7 @@ const handleUpdateNote = async (id: string, updates: Partial<Note>) => {
     path: parentNote.path
   };
 
-  const linkStr = `![[${title}]]`;
+  const linkStr = options.asEmbed ? `![[${title}]]` : `[[${title}]]`;
   let updatedParentContent = "";
 
   if (editorMode === "dynamic" || editorMode === "edit" || editorMode === "split") {
