@@ -358,7 +358,7 @@ export default function Editor({
         onSaveSessionOffset?.(note.id, lastOffsetRef.current);
       }
     };
-  }, [note.id, shouldRestoreScroll, mode, sessionOffset]);
+  }, [note.id, shouldRestoreScroll, mode, sessionOffset, restoreScrollKey]);
 
   const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
