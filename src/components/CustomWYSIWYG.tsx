@@ -7,6 +7,7 @@ export interface CustomWYSIWYGRef {
   setCaretOffset: (offset: number) => void;
   replaceSelection: (replacement: string) => void;
   scrollToOffset: (offset: number) => void;
+  getSelectionRange: () => { start: number, end: number } | null;
 }
 
 interface CustomWYSIWYGProps {
@@ -258,6 +259,27 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
       el.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false);
       setCaretOffset(tempCaret);
       if (isZenMode) setActiveLineIndex(lineIdx);
+    },
+    getSelectionRange: () => {
+      const el = editorRef.current;
+      if (!el) return null;
+      
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return null;
+      
+      const range = sel.getRangeAt(0);
+      if (!el.contains(range.commonAncestorContainer)) return null;
+      
+      try {
+        const preSelectionRange = range.cloneRange();
+        preSelectionRange.selectNodeContents(el);
+        preSelectionRange.setEnd(range.startContainer, range.startOffset);
+        const start = preSelectionRange.toString().length;
+        const end = start + sel.toString().length;
+        return { start, end };
+      } catch (e) {
+        return null;
+      }
     }
   }));
 

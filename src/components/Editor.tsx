@@ -282,27 +282,65 @@ export default function Editor({
     setScheduledMessage(`Scheduled for ${nextReadStr} (+${newInterval}d)`);
   };
 
-  const handleExtractSelection = async () => {
-    if (!selectedText || !onExtractNote) return;
-    
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, text: string, start?: number, end?: number } | null>(null);
+
+  const handleEditorContextMenu = (e: React.MouseEvent) => {
+    let text = window.getSelection()?.toString().trim();
+    if (!text && textareaRef.current) {
+       text = textareaRef.current.value.substring(textareaRef.current.selectionStart, textareaRef.current.selectionEnd).trim();
+    }
+    if (!text) return;
+
     let start: number | undefined;
     let end: number | undefined;
+
+    if ((mode === "edit" || mode === "split") && textareaRef.current) {
+      if (textareaRef.current.selectionStart !== textareaRef.current.selectionEnd) {
+        start = textareaRef.current.selectionStart;
+        end = textareaRef.current.selectionEnd;
+      }
+    } else if (mode === "dynamic" && wysiwygRef.current) {
+      const range = wysiwygRef.current.getSelectionRange();
+      if (range) {
+        start = range.start;
+        end = range.end;
+      }
+    }
+
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, text, start, end });
+  };
+
+  const handleExtractSelection = async (contextData?: { text: string, start?: number, end?: number }) => {
+    const textToExtract = contextData ? contextData.text : selectedText;
+    if (!textToExtract || !onExtractNote) return;
     
-    if ((mode === "edit" || mode === "split") && textareaRef.current && textareaRef.current.selectionStart !== textareaRef.current.selectionEnd) {
-      start = textareaRef.current.selectionStart;
-      end = textareaRef.current.selectionEnd;
+    let start: number | undefined = contextData?.start;
+    let end: number | undefined = contextData?.end;
+    
+    if (!contextData) {
+      if ((mode === "edit" || mode === "split") && textareaRef.current && textareaRef.current.selectionStart !== textareaRef.current.selectionEnd) {
+        start = textareaRef.current.selectionStart;
+        end = textareaRef.current.selectionEnd;
+      } else if (mode === "dynamic" && wysiwygRef.current) {
+        const range = wysiwygRef.current.getSelectionRange();
+        if (range) {
+          start = range.start;
+          end = range.end;
+        }
+      }
     }
     
     // 1. Calculate default title
-    const cleanText = selectedText.replace(/[#*`[\]{}]/g, "").trim();
+    const cleanText = textToExtract.replace(/[#*`[\]{}:]/g, "").trim();
     let excerpt = cleanText.substring(0, 30).trim();
     if (!excerpt) excerpt = "Extract";
-    const defaultTitle = `Extract: ${excerpt}`;
+    const defaultTitle = excerpt;
     
     // 2. Prompt for title
     const userInput = window.prompt("Enter a title for this extract (or leave as default):", defaultTitle);
     if (userInput === null) return; // User cancelled
-    const customTitle = userInput.trim() || defaultTitle;
+    const customTitle = (userInput.trim() || defaultTitle).replace(/:/g, "");
     
     // 3. Confirm Embed vs Link
     const asEmbed = window.confirm("Insert as an Embedded note?\n\n[OK] = Embed (![[...]])\n[Cancel] = Link ([[...]])");
@@ -313,7 +351,7 @@ export default function Editor({
     if (start !== undefined && textareaRef.current) {
       textBefore = textareaRef.current.value.substring(0, start);
     } else {
-      const matchIndex = note.content.indexOf(selectedText);
+      const matchIndex = note.content.indexOf(textToExtract);
       if (matchIndex !== -1) {
         textBefore = note.content.substring(0, matchIndex);
       }
@@ -331,7 +369,7 @@ export default function Editor({
       nearestHeading
     };
     
-    const newNote = await onExtractNote(note.id, selectedText, mode, options, start, end);
+    const newNote = await onExtractNote(note.id, textToExtract, mode, options, start, end);
     if (!newNote) return;
     
     window.getSelection()?.removeAllRanges();
@@ -846,7 +884,7 @@ export default function Editor({
       )}
 
       {/* Editor Content Canvas */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden" onContextMenu={handleEditorContextMenu}>
         
         {/* EDIT PANE */}
         {(mode === "edit" || mode === "split") && (
@@ -1190,6 +1228,24 @@ export default function Editor({
               </>
             )}
           </div>
+        </div>
+      )}
+    {/* Custom Context Menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 w-48 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-md shadow-lg py-1 text-sm font-medium"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onMouseLeave={() => setContextMenu(null)}
+        >
+          <button
+            className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 transition-colors flex items-center gap-2"
+            onClick={() => {
+              handleExtractSelection(contextMenu);
+              setContextMenu(null);
+            }}
+          >
+            <span className="text-xs">✂️</span> Extract Note
+          </button>
         </div>
       )}
     </div>

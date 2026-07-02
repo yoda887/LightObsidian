@@ -784,13 +784,18 @@ const handleUpdateNote = async (id: string, updates: Partial<Note>) => {
   };
 
   const handleWikilinkClick = (noteTitle: string) => {
-  const found = notesByTitle.get(noteTitle.trim().toLowerCase());
+  let lookupTitle = noteTitle.trim();
+  const hashIdx = lookupTitle.indexOf("#");
+  if (hashIdx > -1) {
+    lookupTitle = lookupTitle.substring(0, hashIdx).trim();
+  }
+  const found = notesByTitle.get(lookupTitle.toLowerCase());
   if (found) {
     handleSelectNote(found.id);
   } else {
-    const userConfirmed = confirm(`Note "${noteTitle}" does not exist. Would you like to create it?`);
+    const userConfirmed = confirm(`Note "${lookupTitle}" does not exist. Would you like to create it?`);
     if (userConfirmed) {
-      handleCreateNote("", noteTitle);
+      handleCreateNote("", lookupTitle);
     }
   }
 };
