@@ -108,7 +108,7 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
 
       const safeTarget = target.replace(/"/g, '&quot;');
       if (excl === '!') {
-        return `<span class="md-embed text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1 rounded border border-indigo-200 dark:border-indigo-800"><span class="md-token">![[</span>${content}<span class="md-token">]]</span></span>`;
+        return `<span class="md-embed text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1 rounded border border-indigo-200 dark:border-indigo-800 cursor-pointer hover:underline" data-note="${safeTarget}"><span class="md-token">![[</span>${content}<span class="md-token">]]</span></span>`;
       } else {
         return `<span class="md-wikilink cursor-pointer hover:underline" data-note="${safeTarget}"><span class="md-token">[[</span>${displayContent}<span class="md-token">]]</span></span>`;
       }
