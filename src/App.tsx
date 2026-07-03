@@ -77,7 +77,6 @@ export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [currentNoteId, setCurrentNoteId] = useState<string>("");
   const [openNoteIds, setOpenNoteIds] = useState<string[]>([]);
-
   
   // O(1) доступ вместо notes.find()/notes.some() — критично при большом vault
 const notesById = useMemo(() => {
