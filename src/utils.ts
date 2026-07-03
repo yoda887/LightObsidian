@@ -115,6 +115,11 @@ export async function parseMarkdownToHtml(content: string, notes: Note[] = [], d
     return `${prefix}<span class="px-1.5 py-0.5 bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 rounded-md text-xs font-medium mx-0.5 inline-block">${tag}</span>`;
   });
 
+// ИЗМЕНЕНИЕ: Находим комментарии %%...%% и оборачиваем их в скрытый тег
+  const contentWithHiddenComments = content.replace(/%%([\s\S]*?)%%/g, '<span class="obsidian-comment" style="display: none;">$1</span>');
+  // Передаем очищенный текст в стандартный парсер marked
+  parsed = await marked.parse(contentWithHiddenComments);
+
   // Replace [[type:Note Title]] or [[Note Title|Custom Label]]
   const wikilinkRegex = /\[\[(?:([^\]|:]+):)?([^\]|]+)(?:\|([^\]]+))?\]\]/g;
   return parsed.replace(wikilinkRegex, (_, typeMatch, target, label) => {
