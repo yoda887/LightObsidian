@@ -43,6 +43,8 @@ export async function parseMarkdownToHtml(content: string, notes: Note[] = [], d
   // Strip YAML frontmatter before parsing markdown
   const frontmatterRegex = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/;
   content = content.replace(frontmatterRegex, "");
+  // Скрываем комментарии %%...%% на этапе подготовки контента
+  content = content.replace(/%%([\s\S]*?)%%/g, '<span class="obsidian-comment" style="display: none;">$1</span>');
 
   // Handle transclusions: ![[Note Title]]
   const transclusions = Array.from(content.matchAll(/!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g));
@@ -938,7 +940,8 @@ export function generateSingleHtmlApp(notes: Note[]): string {
       }
 
       // HTML Render
-      const cleanContent = (note.content || "").replace(frontmatterRegex, "");
+      let cleanContent = (note.content || "").replace(frontmatterRegex, "");
+      cleanContent = cleanContent.replace(/%%([\s\S]*?)%%/g, '<span class="obsidian-comment" style="display: none;">$1</span>');
       let rawHtml = marked.parse(cleanContent, { breaks: true, gfm: true });
       
       // Parse Flashcards
