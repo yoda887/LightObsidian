@@ -101,6 +101,11 @@ export function extractYamlCards(note: Note): Flashcard[] {
   return cards;
 }
 
+// Вспомогательная функция для безопасного экранирования спецсимволов в RegExp
+function escapeRegExp(string: string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Helper to update YAML cards in note content
 export function updateYamlCardsInContent(
   content: string,
