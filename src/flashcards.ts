@@ -524,12 +524,7 @@ export function updateFlashcardInContent(content: string, card: Flashcard, grade
   } else if (card.type === "mcq") {
     const nextDateStr = nextDate.toISOString().split('T')[0];
     const srComment = `<!--SR:${nextDateStr},${newInterval},${newEase.toFixed(1)}-->`;
-    // Safely remove any existing SR comment right before the closing :::
     let cleanMatch = card.fullMatch.replace(/\r?\n\s*<!--SR:[^>]+-->\s*\r?\n:::/, "\n:::");
-    // If the SR comment was added but there was no newline before it, the previous regex might miss it if it was \n<!--SR...-->\n:::
-    // Actually the above regex is good. Let's make sure it handles optional whitespaces.
-    
-    // Inject new SR comment right before the closing :::
     const newCardStr = cleanMatch.replace(/\r?\n:::$/, `\n${srComment}\n:::`);
     return content.replace(card.fullMatch, newCardStr);
   } else {
@@ -538,31 +533,38 @@ export function updateFlashcardInContent(content: string, card: Flashcard, grade
 
     if (card.type === "reversed") {
       let existingSr = "";
-      const srMatch = card.fullMatch.match(/<!--SR:([^>]+)-->$/);
+      
+      // Ищем SR-комментарий во ВСЕМ тексте карточки, а не только строго на конце
+      const srMatch = card.fullMatch.match(/<!--SR:([^>]+)-->/);
       if (srMatch) existingSr = srMatch[1];
       
-      let fwd = "", rev = "";
+      // Дефолтное значение для неотвеченной стороны (Сценарии 1 и 3)
+      const defaultState = "2000-01-01,1,250";
+      let fwd = defaultState, rev = defaultState;
+      
       if (existingSr) {
         const parts = existingSr.split('!');
-        fwd = parts[0] || "";
-        rev = parts[1] || "";
+        fwd = parts[0] || defaultState;
+        rev = parts[1] || defaultState;
       }
       
+      // Обновляем только нужную сторону на основе направления карточки
       if (card.isReverseDirection) {
-        rev = newSched;
-        if (!fwd) fwd = `${nextDateStr},1,2.5`;
+        rev = newSched; // 3) Ответ -> Вопрос (fwd останется нетронутым или дефолтным)
       } else {
-        fwd = newSched;
-        if (!rev) rev = `${nextDateStr},1,2.5`;
+        fwd = newSched; // 1) Вопрос -> Ответ (rev останется нетронутым или дефолтным)
       }
       
       const newSrComment = `<!--SR:${fwd}!${rev}-->`;
-      const cleanMatch = card.fullMatch.replace(/\r?\n<!--SR:[^>]+-->$/, '');
+      
+      // Полностью очищаем старый комментарий из тела карточки перед сборкой
+      const cleanMatch = card.fullMatch.replace(/\r?\n?<!--SR:[^>]+-->/, '').trimEnd();
       const newCardStr = `${cleanMatch}\n${newSrComment}`;
+      
       return content.replace(card.fullMatch, newCardStr);
     } else {
       const newSrComment = `<!--SR:${newSched}-->`;
-      const cleanMatch = card.fullMatch.replace(/\r?\n<!--SR:[^>]+-->$/, '');
+      const cleanMatch = card.fullMatch.replace(/\r?\n?<!--SR:[^>]+-->$/, '').trimEnd();
       const newCardStr = `${cleanMatch}\n${newSrComment}`;
       return content.replace(card.fullMatch, newCardStr);
     }
