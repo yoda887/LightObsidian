@@ -748,33 +748,7 @@ export default function Editor({
             <span className="hidden sm:inline">[[]]</span>
           </button>
 
-          {/* ————————————————————————————————————————————————————————————— */}
-          {/* НОВАЯ СЕКЦИЯ: ОПЕРАЦИИ С ПОВТОРЯЮЩИМИСЯ КАРТОЧКАМИ И IR */}
-          {/* ————————————————————————————————————————————————————————————— */}
-          <div className="h-4 w-px bg-slate-200 dark:bg-zinc-700 mx-2 shrink-0" />
           
-          <div className="flex items-center space-x-1 bg-slate-100/80 dark:bg-zinc-800/50 p-0.5 rounded-md border border-slate-200/60 dark:border-zinc-800">
-            {/* Кнопка создания Экстракта */}
-            <button
-              onClick={() => handleExtractSelection()}
-              className="p-1.5 hover:bg-white dark:hover:bg-zinc-700 rounded text-amber-600 dark:text-amber-400 transition-all cursor-pointer flex items-center space-x-1 text-xs font-bold"
-              title="Создать экстракт из выделенного текста (Incremental Reading)"
-            >
-              <Scissors className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Экстракт</span>
-            </button>
-
-            {/* Быстрый помощник: Вставка разделителя двусторонней карточки */}
-            <button
-              onClick={() => insertMarkdown(" ::: ")}
-              className="p-1.5 hover:bg-white dark:hover:bg-zinc-700 rounded text-emerald-600 dark:text-emerald-400 transition-all cursor-pointer flex items-center space-x-1 text-xs font-bold font-mono"
-              title="Вставить разделитель двусторонней карточки (:::)"
-            >
-              <Brain className="w-3.5 h-3.5" />
-              <span>:::</span>
-            </button>
-          </div>
-          {/* ————————————————————————————————————————————————————————————— */}
 
           <button
             onClick={() => insertMarkdown("![[", "]]")}
@@ -893,7 +867,29 @@ export default function Editor({
             <FileText className="w-4 h-4" />
             <span className="hidden sm:inline">Template</span>
           </button>
+
+          
         </div>
+
+        {/* ————————————————————————————————————————————————————————————— */}
+          {/* НОВАЯ СЕКЦИЯ: ОПЕРАЦИИ С ПОВТОРЯЮЩИМИСЯ КАРТОЧКАМИ И IR */}
+          {/* ————————————————————————————————————————————————————————————— */}
+          <div className="h-4 w-px bg-slate-200 dark:bg-zinc-700 mx-2 shrink-0" />
+          
+          <div className="flex items-center space-x-1 bg-slate-100/80 dark:bg-zinc-800/50 p-0.5 rounded-md border border-slate-200/60 dark:border-zinc-800">
+            {/* Кнопка создания Экстракта */}
+            <button
+              onClick={() => handleExtractSelection()}
+              className="p-1.5 hover:bg-white dark:hover:bg-zinc-700 rounded text-amber-600 dark:text-amber-400 transition-all cursor-pointer flex items-center space-x-1 text-xs font-bold"
+              title="Создать экстракт из выделенного текста (Incremental Reading)"
+            >
+              <Scissors className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Экстракт</span>
+            </button>
+           
+            
+          </div>
+          {/* ————————————————————————————————————————————————————————————— */}
       </div>
       )}
 
