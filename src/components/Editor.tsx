@@ -30,14 +30,12 @@ import {
   Brain,
   Settings,
   BookOpen,
-  Sliders,
   CheckSquare,
   Hash,
   Type,
   List,
   CheckCircle2,
-  Scissors, // <-- Добавлено
-  Brain,    // <-- Добавлено
+  Scissors,
 } from "lucide-react";
 
 interface EditorProps {
@@ -53,7 +51,6 @@ interface EditorProps {
   sessionOffset?: number;
   onSaveSessionOffset?: (noteId: string, offset: number) => void;
   onWikilinkClick?: (noteTitle: string) => void;
-  onCreateExtract?: (selectedText: string) => void; // <-- Добавлен новый проп
   onExtractNote?: (
     parentNoteId: string,
     extractText: string,
@@ -76,7 +73,6 @@ export default function Editor({
   onUpdateNote,
   onSelectNote,
   onWikilinkClick,
-  onCreateExtract, // <-- Добавлено
   isZenMode,
   onExtractNote,
   shouldRestoreScroll,
@@ -84,25 +80,6 @@ export default function Editor({
   sessionOffset,
   onSaveSessionOffset,
 }: EditorProps) {
-  
-  // Функция, которая считывает выделение из textarea и запускает экстракт
-  const handleCreateExtractClick = () => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = textarea.value.substring(start, end).trim();
-
-    if (!selectedText) {
-      alert("Пожалуйста, выделите текст в редакторе, чтобы создать из него экстракт!");
-      return;
-    }
-
-    if (onCreateExtract) {
-      onCreateExtract(selectedText);
-    }
-  };
   
   const renderStringWithLinks = (text: string) => {
     const parts = [];
@@ -306,70 +283,51 @@ export default function Editor({
     setScheduledMessage(`Scheduled for ${nextReadStr} (+${newInterval}d)`);
   };
 
-  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, text: string, start?: number, end?: number } | null>(null);
-
-  const handleEditorContextMenu = (e: React.MouseEvent) => {
-    let text = window.getSelection()?.toString().trim();
-    if (!text && textareaRef.current) {
-       text = textareaRef.current.value.substring(textareaRef.current.selectionStart, textareaRef.current.selectionEnd).trim();
-    }
-    if (!text) return;
-
-    let start: number | undefined;
-    let end: number | undefined;
-
-    if ((mode === "edit" || mode === "split") && textareaRef.current) {
-      if (textareaRef.current.selectionStart !== textareaRef.current.selectionEnd) {
-        start = textareaRef.current.selectionStart;
-        end = textareaRef.current.selectionEnd;
-      }
-    } else if (mode === "dynamic" && wysiwygRef.current) {
-      const range = wysiwygRef.current.getSelectionRange();
-      if (range) {
-        start = range.start;
-        end = range.end;
-      }
-    }
-
-    e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, text, start, end });
-  };
-
   const handleExtractSelection = async (contextData?: { text: string, start?: number, end?: number }) => {
-    const textToExtract = contextData ? contextData.text : selectedText;
-    if (!textToExtract || !onExtractNote) return;
-    
+    let textToExtract = "";
     let start: number | undefined = contextData?.start;
     let end: number | undefined = contextData?.end;
     
-    if (!contextData) {
-      if ((mode === "edit" || mode === "split") && textareaRef.current && textareaRef.current.selectionStart !== textareaRef.current.selectionEnd) {
-        start = textareaRef.current.selectionStart;
-        end = textareaRef.current.selectionEnd;
+    if (contextData) {
+      textToExtract = contextData.text;
+    } else {
+      if ((mode === "edit" || mode === "split") && textareaRef.current) {
+        const tx = textareaRef.current;
+        if (tx.selectionStart !== tx.selectionEnd) {
+          start = tx.selectionStart;
+          end = tx.selectionEnd;
+          textToExtract = tx.value.substring(start, end);
+        }
       } else if (mode === "dynamic" && wysiwygRef.current) {
         const range = wysiwygRef.current.getSelectionRange();
         if (range) {
           start = range.start;
           end = range.end;
         }
+        textToExtract = window.getSelection()?.toString() || "";
+      }
+      
+      if (!textToExtract && selectedText) {
+        textToExtract = selectedText;
       }
     }
+
+    if (!textToExtract || !textToExtract.trim() || !onExtractNote) {
+      alert("Пожалуйста, выделите текст в заметке, чтобы создать из него экстракт!");
+      return;
+    }
     
-    // 1. Calculate default title
     const cleanText = textToExtract.replace(/[#*`[\]{}:]/g, "").trim();
     let excerpt = cleanText.substring(0, 30).trim();
     if (!excerpt) excerpt = "Extract";
     const defaultTitle = excerpt;
     
-    // 2. Prompt for title
     const userInput = window.prompt("Enter a title for this extract (or leave as default):", defaultTitle);
-    if (userInput === null) return; // User cancelled
+    if (userInput === null) return; 
     const customTitle = (userInput.trim() || defaultTitle).replace(/:/g, "");
     
-    // 3. Confirm Embed vs Link
     const asEmbed = window.confirm("Insert as an Embedded note?\n\n[OK] = Embed (![[...]])\n[Cancel] = Link ([[...]])");
     
-    // 4. Find nearest heading for context
     let nearestHeading: string | null = null;
     let textBefore = "";
     if (start !== undefined && textareaRef.current) {
@@ -530,7 +488,6 @@ export default function Editor({
       );
     }, 50);
   };
-
 
   // Intercept click events in preview container to handle dynamic wikilinks
   const handlePreviewClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -799,7 +756,7 @@ export default function Editor({
           <div className="flex items-center space-x-1 bg-slate-100/80 dark:bg-zinc-800/50 p-0.5 rounded-md border border-slate-200/60 dark:border-zinc-800">
             {/* Кнопка создания Экстракта */}
             <button
-              onClick={handleCreateExtractClick}
+              onClick={() => handleExtractSelection()}
               className="p-1.5 hover:bg-white dark:hover:bg-zinc-700 rounded text-amber-600 dark:text-amber-400 transition-all cursor-pointer flex items-center space-x-1 text-xs font-bold"
               title="Создать экстракт из выделенного текста (Incremental Reading)"
             >
@@ -819,9 +776,6 @@ export default function Editor({
           </div>
           {/* ————————————————————————————————————————————————————————————— */}
 
-
-
-          
           <button
             onClick={() => insertMarkdown("![[", "]]")}
             className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded text-indigo-600 dark:text-indigo-400 transition-colors cursor-pointer flex items-center space-x-1 font-mono text-xs font-semibold"
@@ -944,7 +898,7 @@ export default function Editor({
       )}
 
       {/* Editor Content Canvas */}
-      <div className="flex-1 flex overflow-hidden" onContextMenu={handleEditorContextMenu}>
+      <div className="flex-1 flex overflow-hidden">
         
         {/* EDIT PANE */}
         {(mode === "edit" || mode === "split") && (
@@ -1002,7 +956,7 @@ export default function Editor({
                 if (settings.hideYaml) {
                   handleBodyChange(val);
                 } else {
-                  onUpdateNote(note.id, { content: val });
+                  onUpdateNote(note.id, { content: newContent });
                 }
                 handleTextareaChange(e);
               }}
@@ -1067,7 +1021,6 @@ export default function Editor({
                     
                     return (
                       <div key={key} className="flex items-center min-h-[32px] px-1 py-1 gap-2">
-                        {/* Изменено w-20 на w-32 для более широкой колонки названий */}
                         <div className="w-32 flex items-center gap-1.5 text-xs font-medium text-slate-400 dark:text-zinc-500 shrink-0">
                           <IconComponent className="w-3.5 h-3.5 text-slate-400/80" />
                           <span className="truncate" title={key}>{key}</span>
@@ -1212,7 +1165,7 @@ export default function Editor({
             </button>
             <div className="w-px h-4 bg-indigo-500/50 self-center" />
             <button
-              onClick={handleExtractSelection}
+              onClick={() => handleExtractSelection()}
               className="flex items-center gap-1.5 px-2.5 py-1 hover:bg-indigo-700 text-white font-medium text-xs rounded cursor-pointer transition-colors"
             >
               <BookOpen className="w-3.5 h-3.5" />
@@ -1290,29 +1243,10 @@ export default function Editor({
           </div>
         </div>
       )}
-    {/* Custom Context Menu */}
-      {contextMenu && (
-        <div
-          className="fixed z-50 w-48 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-md shadow-lg py-1 text-sm font-medium"
-          style={{ top: contextMenu.y, left: contextMenu.x }}
-          onMouseLeave={() => setContextMenu(null)}
-        >
-          <button
-            className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 transition-colors flex items-center gap-2"
-            onClick={() => {
-              handleExtractSelection(contextMenu);
-              setContextMenu(null);
-            }}
-          >
-            <span className="text-xs">✂️</span> Extract Note
-          </button>
-        </div>
-      )}
     </div>
   );
 }
 
-// Projection helper to calculate text caret screen position
 function getCaretCoordinates(element: HTMLTextAreaElement, position: number) {
   const div = document.createElement("div");
   const style = window.getComputedStyle(element);
