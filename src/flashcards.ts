@@ -532,41 +532,44 @@ export function updateFlashcardInContent(content: string, card: Flashcard, grade
     const newSched = `${nextDateStr},${newInterval},${newEase.toFixed(1)}`;
 
     if (card.type === "reversed") {
-      let existingSr = "";
-      
-      // Ищем SR-комментарий во ВСЕМ тексте карточки, а не только строго на конце
-      const srMatch = card.fullMatch.match(/<!--SR:([^>]+)-->/);
-      if (srMatch) existingSr = srMatch[1];
-      
-      // Дефолтное значение для неотвеченной стороны (Сценарии 1 и 3)
-      const defaultState = "2000-01-01,1,250";
-      let fwd = defaultState, rev = defaultState;
-      
-      if (existingSr) {
-        const parts = existingSr.split('!');
-        fwd = parts[0] || defaultState;
-        rev = parts[1] || defaultState;
+      // Исходные вопрос и ответ (разворачиваем обратно, если это reverse-направление)
+      const originalQ = card.isReverseDirection ? card.answer : card.question;
+      const originalA = card.isReverseDirection ? card.question : card.answer;
+
+      // Динамическое регулярное выражение, которое найдет эту карточку в файле 
+      // вне зависимости от того, сколько там сейчас строк <!--SR:...--> и какие они
+      const dynamicCardRegex = new RegExp(
+        `(${escapeRegExp(originalQ)}\\s*:::\\s*${escapeRegExp(originalA)})(?:\\s*<!--SR:[^>]+-->)*`,
+        "g"
+      );
+
+      let fwd = "2000-01-01,1,250";
+      let rev = "2000-01-01,1,250";
+
+      // Ищем, есть ли уже КАКОЙ-ТО комментарий SR в тексте файла для этой карточки
+      const currentMatch = content.match(dynamicCardRegex);
+      if (currentMatch && currentMatch[0]) {
+        const srMatch = currentMatch[0].match(/<!--SR:([^>]+)-->/);
+        if (srMatch && srMatch[1]) {
+          const parts = srMatch[1].split('!');
+          fwd = parts[0] || "2000-01-01,1,250";
+          rev = parts[1] || "2000-01-01,1,250";
+        }
       }
-      
-      // Обновляем только нужную сторону на основе направления карточки
+
+      // Обновляем только нужную сторону
       if (card.isReverseDirection) {
-        rev = newSched; // 3) Ответ -> Вопрос (fwd останется нетронутым или дефолтным)
+        rev = newSched;
       } else {
-        fwd = newSched; // 1) Вопрос -> Ответ (rev останется нетронутым или дефолтным)
+        fwd = newSched;
       }
-      
+
       const newSrComment = `<!--SR:${fwd}!${rev}-->`;
-      
-      // Полностью очищаем старый комментарий из тела карточки перед сборкой
-      const cleanMatch = card.fullMatch.replace(/\r?\n?<!--SR:[^>]+-->/, '').trimEnd();
-      const newCardStr = `${cleanMatch}\n${newSrComment}`;
-      
-      return content.replace(card.fullMatch, newCardStr);
-    } else {
-      const newSrComment = `<!--SR:${newSched}-->`;
-      const cleanMatch = card.fullMatch.replace(/\r?\n?<!--SR:[^>]+-->$/, '').trimEnd();
-      const newCardStr = `${cleanMatch}\n${newSrComment}`;
-      return content.replace(card.fullMatch, newCardStr);
+
+      // Заменяем старую карточку (вместе со всеми ошибочными или старыми строками SR) на чистую структуру
+      return content.replace(dynamicCardRegex, (match, cardBody) => {
+        return `${cardBody.trim()}\n${newSrComment}`;
+      });
     }
   }
 }
