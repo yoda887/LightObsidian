@@ -116,9 +116,9 @@ export async function parseMarkdownToHtml(content: string, notes: Note[] = [], d
   });
 
 // ИЗМЕНЕНИЕ: Находим комментарии %%...%% и оборачиваем их в скрытый тег
-  const contentWithHiddenComments = content.replace(/%%([\s\S]*?)%%/g, '<span class="obsidian-comment" style="display: none;">$1</span>');
+  //const contentWithHiddenComments = content.replace(/%%([\s\S]*?)%%/g, '<span class="obsidian-comment" style="display: none;">$1</span>');
   // Передаем очищенный текст в стандартный парсер marked
-  parsed = await marked.parse(contentWithHiddenComments);
+  //parsed = await marked.parse(contentWithHiddenComments);
 
   // Replace [[type:Note Title]] or [[Note Title|Custom Label]]
   const wikilinkRegex = /\[\[(?:([^\]|:]+):)?([^\]|]+)(?:\|([^\]]+))?\]\]/g;
