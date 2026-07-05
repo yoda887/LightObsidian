@@ -31,6 +31,18 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
   // Escape HTML
   let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+  // Pre-process %% comments
+  const C_START = "___COMMENT_START___";
+  const C_END = "___COMMENT_END___";
+  html = html.replace(/%%([\s\S]*?)%%/g, (match) => {
+    return match.split('\n').map((part, i, arr) => {
+      let res = part;
+      if (i === 0) res = res.replace(/^%%/, '<span class="md-token">%%</span>');
+      if (i === arr.length - 1) res = res.replace(/%%$/, '<span class="md-token">%%</span>');
+      return `${C_START}${res}${C_END}`;
+    }).join('\n');
+  });
+
   // Split by newline to process line by line
   let inTestBlock = false;
   const lines = html.split('\n');
@@ -123,7 +135,10 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
   });
 
   // Rejoin with newline characters and append <br/> to fix the trailing newline visual bug in contentEditable
-  return highlightedLines.join('\n') + '<br/>';
+  let finalHtml = highlightedLines.join('\n');
+  finalHtml = finalHtml.replace(/___COMMENT_START___/g, '<span class="text-slate-400 dark:text-zinc-500 italic opacity-80">');
+  finalHtml = finalHtml.replace(/___COMMENT_END___/g, '</span>');
+  return finalHtml + '<br/>';
 };
 
 export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(

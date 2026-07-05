@@ -951,7 +951,7 @@ export default function Editor({
                 if (settings.hideYaml) {
                   handleBodyChange(val);
                 } else {
-                  onUpdateNote(note.id, { content: newContent });
+                  onUpdateNote(note.id, { content: val });
                 }
                 handleTextareaChange(e);
               }}
