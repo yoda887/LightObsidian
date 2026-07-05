@@ -7,7 +7,7 @@ import { useState } from "react";
 import { Note } from "../types";
 //import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock } from "lucide-react";
 //import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock, AlertTriangle } from "lucide-react";
-import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock, AlertTriangle, Loader2 } from "lucide-react";
+import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock, AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 
 // interface SidebarProps {
 //   notes: Note[];
@@ -46,6 +46,9 @@ interface SidebarProps {
   onRestoreVaultAccess?: () => void;
   onOpenDailyNote: () => void;
   onOpenRandomNote: () => void;
+  syncStatus?: "idle" | "syncing" | "success" | "error";
+  syncProgressText?: string;
+  onSyncVault?: () => void;
 }
 
 interface TreeNode {
@@ -242,7 +245,10 @@ export default function Sidebar({
   isVaultLoading,
   onRestoreVaultAccess,
   onOpenDailyNote,
-  onOpenRandomNote
+  onOpenRandomNote,
+  syncStatus = "idle",
+  syncProgressText = "",
+  onSyncVault
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -399,31 +405,54 @@ export default function Sidebar({
       {/* Vault Footer Panel */}
       <div className="p-3 border-t border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950">
         {onOpenVault && (
-          <div className="w-full flex items-center justify-between bg-slate-200 dark:bg-zinc-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 rounded-lg transition-colors group">
-            <button
-              onClick={onOpenVault}
-              disabled={isVaultLoading}
-              className="flex-1 flex items-center space-x-2 px-3 py-2 text-slate-700 dark:text-zinc-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 cursor-pointer text-left truncate rounded-l-lg outline-none disabled:opacity-50"
-              title="Open Local Folder (Vault)"
-            >
-              {isVaultLoading ? (
-                <Loader2 className="w-4 h-4 shrink-0 animate-spin text-indigo-500" />
-              ) : (
-                <BookOpen className="w-4 h-4 shrink-0" />
-              )}
-              <span className="text-xs font-semibold truncate">
-                {isVaultLoading ? "Синхронизация..." : (vaultName || "Open Vault...")}
-              </span>
-            </button>
-            
-            {isVaultPending && onRestoreVaultAccess && (
+          <div className="flex flex-col">
+            <div className="w-full flex items-center justify-between bg-slate-200 dark:bg-zinc-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 rounded-lg transition-colors group">
               <button
-                onClick={onRestoreVaultAccess}
-                className="px-3 py-2 text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300 cursor-pointer transition-colors rounded-r-lg"
-                title="Восстановить доступ к локальной папке"
+                onClick={onOpenVault}
+                disabled={isVaultLoading || syncStatus === "syncing"}
+                className={`flex-1 flex items-center space-x-2 px-3 py-2 text-slate-700 dark:text-zinc-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 cursor-pointer text-left truncate outline-none disabled:opacity-50 ${vaultName ? "rounded-l-lg" : "rounded-lg"}`}
+                title="Change Local Folder (Vault)"
               >
-                <AlertTriangle className="w-4 h-4 shrink-0 animate-pulse" />
+                <BookOpen className="w-4 h-4 shrink-0" />
+                <span className="text-xs font-semibold truncate">
+                  {vaultName || "Open Vault..."}
+                </span>
               </button>
+              
+              {vaultName && onSyncVault && (
+                <button
+                  onClick={onSyncVault}
+                  disabled={isVaultLoading || syncStatus === "syncing"}
+                  className="px-3 py-2 text-slate-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 cursor-pointer transition-colors border-l border-slate-300 dark:border-zinc-700/80 rounded-r-lg outline-none disabled:opacity-40"
+                  title="Synchronize Vault"
+                >
+                  <RefreshCw className={`w-4 h-4 shrink-0 ${syncStatus === "syncing" ? "animate-spin text-indigo-500" : ""}`} />
+                </button>
+              )}
+
+              {isVaultPending && onRestoreVaultAccess && (
+                <button
+                  onClick={onRestoreVaultAccess}
+                  className="px-3 py-2 text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300 cursor-pointer transition-colors rounded-r-lg"
+                  title="Восстановить доступ к локальной папке"
+                >
+                  <AlertTriangle className="w-4 h-4 shrink-0 animate-pulse" />
+                </button>
+              )}
+            </div>
+
+            {/* Sync Progress Indicator */}
+            {syncStatus !== "idle" && (
+              <div className={`mt-2 text-[10px] flex items-center gap-1.5 px-1 font-medium truncate select-none ${
+                syncStatus === "success" 
+                  ? "text-emerald-600 dark:text-emerald-400" 
+                  : syncStatus === "error" 
+                    ? "text-red-500 dark:text-red-400" 
+                    : "text-slate-500 dark:text-zinc-400 animate-pulse"
+              }`}>
+                {syncStatus === "syncing" && <Loader2 className="w-3 h-3 animate-spin text-indigo-500 shrink-0" />}
+                <span className="truncate">{syncProgressText}</span>
+              </div>
             )}
           </div>
         )}

@@ -84,6 +84,10 @@ const DEFAULT_NOTES: Note[] = [
 
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
+  const notesRef = React.useRef(notes);
+  React.useEffect(() => {
+    notesRef.current = notes;
+  }, [notes]);
   const [currentNoteId, setCurrentNoteId] = useState<string>("");
   const [openNoteIds, setOpenNoteIds] = useState<string[]>([]);
   
@@ -108,6 +112,8 @@ const notesByTitle = useMemo(() => {
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState<boolean>(false);
   const [vaultHandle, setVaultHandle] = useState<any>(null);
   const [folders, setFolders] = useState<string[]>([]);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "success" | "error">("idle");
+  const [syncProgressText, setSyncProgressText] = useState<string>("");
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [isReviewOpen, setIsReviewOpen] = useState<boolean>(false);
@@ -248,60 +254,155 @@ const flushVaultWrites = async () => {
   const [isVaultLoading, setIsVaultLoading] = useState<boolean>(false);
   const [isVaultSaving, setIsVaultSaving] = useState<boolean>(false);
 
-  const getFilesRecursively = async (
-  dirHandle: any,
-  currentPath: string = "",
-  existingNotesMap: Map<string, Note> = new Map()
-): Promise<{notes: Note[], folders: string[]}> => {
-  let notesResult: Note[] = [];
-  let foldersResult: string[] = [];
-
-  for await (const entry of dirHandle.values()) {
-    if (entry.kind === 'file' && entry.name.endsWith('.md')) {
-      const id = currentPath ? `${currentPath}/${entry.name}` : entry.name;
-
-      if (pendingDeletionsRef.current.has(id)) {
-        continue;
+  const countFilesRecursively = async (dirHandle: any): Promise<number> => {
+    let count = 0;
+    for await (const entry of dirHandle.values()) {
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+      if (entry.kind === 'file' && entry.name.endsWith('.md')) {
+        count++;
+      } else if (entry.kind === 'directory') {
+        count += await countFilesRecursively(entry);
       }
+    }
+    return count;
+  };
 
-      try {
-        const file = await entry.getFile();
-        const statDate = new Date(file.lastModified).toISOString();
+  const getFilesRecursively = async (
+    dirHandle: any,
+    currentPath: string = "",
+    existingNotesMap: Map<string, Note> = new Map(),
+    onFileRead?: (current: number) => void,
+    progressCounter: { val: number } = { val: 0 }
+  ): Promise<{notes: Note[], folders: string[]}> => {
+    let notesResult: Note[] = [];
+    let foldersResult: string[] = [];
 
-        const existing = existingNotesMap.get(id);
-        const isPendingWrite = pendingWritesRef.current.has(id);
+    for await (const entry of dirHandle.values()) {
+      if (entry.kind === 'file' && entry.name.endsWith('.md')) {
+        const id = currentPath ? `${currentPath}/${entry.name}` : entry.name;
 
-        if (existing) {
-          const existingTime = new Date(existing.updatedAt).getTime();
-          if (isPendingWrite || existingTime >= file.lastModified || existing.updatedAt === statDate) {
-            notesResult.push(existing);
-            continue;
-          }
+        if (pendingDeletionsRef.current.has(id)) {
+          continue;
         }
 
-        const content = await file.text();
-        notesResult.push({
-          id,
-          title: entry.name.replace('.md', ''),
-          content: content,
-          createdAt: existing ? existing.createdAt : statDate,
-          updatedAt: statDate,
-          path: currentPath
-        });
-      } catch (e) {
-        console.error("Error reading file", entry.name, e);
+        progressCounter.val++;
+        if (onFileRead) {
+          onFileRead(progressCounter.val);
+        }
+
+        try {
+          const file = await entry.getFile();
+          const statDate = new Date(file.lastModified).toISOString();
+
+          const existing = existingNotesMap.get(id);
+          const isPendingWrite = pendingWritesRef.current.has(id);
+
+          if (existing) {
+            const existingTime = new Date(existing.updatedAt).getTime();
+            if (isPendingWrite || existingTime >= file.lastModified || existing.updatedAt === statDate) {
+              notesResult.push(existing);
+              continue;
+            }
+          }
+
+          const content = await file.text();
+          notesResult.push({
+            id,
+            title: entry.name.replace('.md', ''),
+            content: content,
+            createdAt: existing ? existing.createdAt : statDate,
+            updatedAt: statDate,
+            path: currentPath
+          });
+        } catch (e) {
+          console.error("Error reading file", entry.name, e);
+        }
+      } else if (entry.kind === 'directory') {
+        if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+        const subPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
+        foldersResult.push(subPath);
+        const subData = await getFilesRecursively(entry, subPath, existingNotesMap, onFileRead, progressCounter);
+        notesResult.push(...subData.notes);
+        foldersResult.push(...subData.folders);
       }
-    } else if (entry.kind === 'directory') {
-      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-      const subPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
-      foldersResult.push(subPath);
-      const subData = await getFilesRecursively(entry, subPath, existingNotesMap);
-      notesResult.push(...subData.notes);
-      foldersResult.push(...subData.folders);
+    }
+    return {notes: notesResult, folders: foldersResult};
+  };
+
+  async function performSync(targetHandle = vaultHandle) {
+    if (!targetHandle) return;
+    setSyncStatus("syncing");
+    setIsVaultLoading(true);
+    setSyncProgressText("Подсчет файлов на диске...");
+
+    try {
+      // 1. Быстрый подсчет файлов
+      const totalFiles = await countFilesRecursively(targetHandle);
+      
+      // 2. Рекурсивное чтение файлов
+      setSyncProgressText(`Чтение файлов: 0/${totalFiles}`);
+      const existingMap = new Map<string, Note>(notesRef.current.map(n => [n.id, n]));
+      const { notes: loadedNotes, folders: loadedFolders } = await getFilesRecursively(
+        targetHandle,
+        "",
+        existingMap,
+        (current) => setSyncProgressText(`Чтение файлов: ${current}/${totalFiles}`)
+      );
+
+      // 3. Сохранение в базу данных IndexedDB
+      setSyncProgressText(`Сохранение заметок: 0/${loadedNotes.length}`);
+      await clearNotes();
+      
+      let putCount = 0;
+      for (const n of loadedNotes) {
+        await putNote(n);
+        putCount++;
+        if (putCount % 5 === 0 || putCount === loadedNotes.length) {
+          setSyncProgressText(`Сохранение заметок: ${putCount}/${loadedNotes.length}`);
+        }
+      }
+
+      setFolders(loadedFolders);
+      setNotes(loadedNotes);
+
+      // 4. Проверка существования текущей открытой заметки и открытых вкладок
+      if (loadedNotes.length > 0) {
+        setOpenNoteIds(prev => {
+          const validTabs = prev.filter(tabId => loadedNotes.some(n => n.id === tabId));
+          if (validTabs.length === 0) {
+            return [loadedNotes[0].id];
+          }
+          return validTabs;
+        });
+
+        const stillExists = loadedNotes.some(n => n.id === currentNoteId);
+        if (!currentNoteId || !stillExists) {
+          setCurrentNoteId(loadedNotes[0].id);
+        }
+      } else {
+        setOpenNoteIds([]);
+        setCurrentNoteId("");
+      }
+
+      setSyncStatus("success");
+      setSyncProgressText("Синхронизация успешно завершена");
+      setTimeout(() => {
+        setSyncStatus("idle");
+        setSyncProgressText("");
+      }, 3000);
+
+    } catch (err) {
+      console.error("Synchronization failed", err);
+      setSyncStatus("error");
+      setSyncProgressText("Ошибка синхронизации");
+      setTimeout(() => {
+        setSyncStatus("idle");
+        setSyncProgressText("");
+      }, 5000);
+    } finally {
+      setIsVaultLoading(false);
     }
   }
-  return {notes: notesResult, folders: foldersResult};
-};
 
   const openVault = async () => {
     // @ts-ignore
@@ -314,25 +415,8 @@ const flushVaultWrites = async () => {
       const handle = await window.showDirectoryPicker();
       setVaultHandle(handle);
       await saveVaultHandle(handle);
-      
-      setIsVaultLoading(true); // Включаем спиннер
-      
-      const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(handle);
-      
-      setFolders(loadedFolders);
-      if (loadedNotes.length > 0) {
-        setNotes(loadedNotes);
-        setCurrentNoteId(loadedNotes[0].id);
-        await clearNotes();
-        for (const n of loadedNotes) await putNote(n);
-      } else {
-        setNotes([]);
-        setCurrentNoteId("");
-      }
     } catch (err) {
       console.error("Failed to open vault:", err);
-    } finally {
-      setIsVaultLoading(false); // Выключаем спиннер в любом случае
     }
   };
 
@@ -359,23 +443,9 @@ const flushVaultWrites = async () => {
       if (perm === "granted") {
         setVaultHandle(vaultPendingHandle);
         setVaultPendingHandle(null);
-        
-        setIsVaultLoading(true); // <--- ВКЛЮЧАЕМ СПИННЕР
-        
-        const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(vaultPendingHandle);
-        setFolders(loadedFolders);
-        if (loadedNotes.length > 0) {
-          setNotes(loadedNotes);
-          setCurrentNoteId(loadedNotes[0].id);
-          setOpenNoteIds([loadedNotes[0].id]);
-          await clearNotes();
-          for (const n of loadedNotes) await putNote(n);
-        }
       }
     } catch (err) {
       console.error("Пользователь отменил восстановление доступа", err);
-    } finally {
-      setIsVaultLoading(false); // <--- ВЫКЛЮЧАЕМ СПИННЕР
     }
   };
 
@@ -405,24 +475,15 @@ const flushVaultWrites = async () => {
       try {
         // Try to restore saved vault handle
         const savedHandle = await getVaultHandle();
-if (savedHandle) {
-  try {
-    // Используем queryPermission, он не требует клика
-    const perm = await (savedHandle as any).queryPermission({ mode: "readwrite" });
-    
-    if (perm === "granted") {
-      setVaultHandle(savedHandle);
-      const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(savedHandle);
-      setFolders(loadedFolders);
-      if (loadedNotes.length > 0) {
-        setNotes(loadedNotes);
-        setCurrentNoteId(loadedNotes[0].id);
-        setOpenNoteIds([loadedNotes[0].id]);
-        await clearNotes();
-        for (const n of loadedNotes) await putNote(n);
-      }
-      return; 
-    } else if (perm === "prompt") {
+        if (savedHandle) {
+          try {
+            // Используем queryPermission, он не требует клика
+            const perm = await (savedHandle as any).queryPermission({ mode: "readwrite" });
+            
+            if (perm === "granted") {
+              setVaultHandle(savedHandle);
+              return; 
+            } else if (perm === "prompt") {
       // Права есть, но их нужно подтвердить кликом. 
       // Сохраняем handle в стейт, чтобы показать кнопку юзеру
       setVaultPendingHandle(savedHandle);
@@ -513,45 +574,10 @@ if (savedHandle) {
     localStorage.setItem("lite_obsidian_settings", JSON.stringify(appSettings));
   }, [appSettings]);
 
-  // Keep a ref to the latest notes for the syncVault function
-  const notesRef = React.useRef(notes);
-  useEffect(() => {
-    notesRef.current = notes;
-  }, [notes]);
-
-  // Sync vault with external file system changes
-  // Синхронизация с локальной папкой строго ОДИН РАЗ при инициализации или смене папки
+  // Sync vault with external file system changes on initial load or folder change
   useEffect(() => {
     if (!vaultHandle) return;
-
-    let isSyncing = false;
-
-    const syncVault = async () => {
-      if (isSyncing || !vaultHandle) return;
-      isSyncing = true;
-      setIsVaultLoading(true);
-      try {
-        // Строим карту существующих заметок для getFilesRecursively
-        const existingMap = new Map<string, Note>(notesRef.current.map(n => [n.id, n]));
-        const {notes: loadedNotes, folders: loadedFolders} = await getFilesRecursively(vaultHandle, "", existingMap);
-
-        setFolders(loadedFolders);
-        setNotes(loadedNotes);
-
-        // Обновляем локальный кэш IndexedDB данными с диска
-        await clearNotes();
-        for (const n of loadedNotes) await putNote(n);
-      } catch (err) {
-        console.error("Failed to sync vault", err);
-      } finally {
-        setIsVaultLoading(false);
-        isSyncing = false;
-      }
-    };
-
-    // Вызываем однократную вычитку папки
-    syncVault();
-
+    performSync();
   }, [vaultHandle]);
 
   // Toggle theme
@@ -1150,6 +1176,9 @@ if (savedHandle) {
           onRestoreVaultAccess={handleRestoreVaultAccess}
           onOpenDailyNote={handleOpenDailyNote}
           onOpenRandomNote={handleOpenRandomNote}
+          syncStatus={syncStatus}
+          syncProgressText={syncProgressText}
+          onSyncVault={() => performSync()}
         />
         )}
 
