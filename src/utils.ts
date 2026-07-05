@@ -1328,3 +1328,37 @@ export function generateSingleHtmlApp(notes: Note[]): string {
 </body>
 </html>`;
 }
+export function updateLinksInContent(content: string, oldTitle: string, newTitle: string, keepAsAlias: boolean): string {
+  const oldTitleLower = oldTitle.trim().toLowerCase();
+  const wikilinkRegex = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+  
+  return content.replace(wikilinkRegex, (match, targetAndHash, existingAlias) => {
+    const hashIdx = targetAndHash.indexOf("#");
+    let target = targetAndHash;
+    let hash = "";
+    if (hashIdx > -1) {
+      target = targetAndHash.substring(0, hashIdx);
+      hash = targetAndHash.substring(hashIdx);
+    }
+    
+    if (target.trim().toLowerCase() === oldTitleLower) {
+      const finalTarget = `${newTitle}${hash}`;
+      
+      if (existingAlias !== undefined) {
+        return `[[${finalTarget}|${existingAlias}]]`;
+      }
+      
+      if (keepAsAlias) {
+        return `[[${finalTarget}|${targetAndHash}]]`;
+      }
+      
+      return `[[${finalTarget}]]`;
+    }
+    return match;
+  });
+}
+
+export function escapeRegExp(string: string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+}
+

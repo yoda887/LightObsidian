@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import { Note } from "./types";
-import { generateSingleHtmlApp, splitFrontmatter, replacePlaintextInMarkdown } from "./utils";
+import { generateSingleHtmlApp, splitFrontmatter, replacePlaintextInMarkdown, escapeRegExp, updateLinksInContent } from "./utils";
 import { getAllNotes, putNote, deleteNote, clearNotes, saveVaultHandle, getVaultHandle, clearVaultHandle } from "./db";
 import Sidebar from "./components/Sidebar";
 import Editor from "./components/Editor";
@@ -13,9 +13,18 @@ import GraphView from "./components/GraphView";
 import RightSidebar from "./components/RightSidebar";
 import SettingsDialog, { AppSettings } from "./components/SettingsDialog";
 import ReviewModal from "./components/ReviewModal";
+import RenameLinksModal from "./components/RenameLinksModal";
 import { extractFlashcards, getDueCards, updateFlashcardInContent, Flashcard } from "./flashcards";
 import TimelineView from "./components/TimelineView";
 import HelpDialog from "./components/HelpDialog";
+
+interface PendingRename {
+  updatedNote: Note;
+  oldNote: Note;
+  filenameChanged: boolean;
+  updatedNotesArray: Note[];
+  linkingNotes: Note[];
+}
 import { Map as MapIcon, FileText, Settings, Download, BookOpen, PanelRight, Edit3, Columns, Eye, X, Zap, Sun, Moon, Type, ArrowLeft, ArrowRight, Brain, Clock, HelpCircle } from "lucide-react";
 // Default placeholder notes to guide the user
 const DEFAULT_NOTES: Note[] = [
@@ -103,6 +112,7 @@ const notesByTitle = useMemo(() => {
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [isReviewOpen, setIsReviewOpen] = useState<boolean>(false);
   const [appSettings, setAppSettings] = useState<AppSettings>({ font: "inter", hideYaml: false });
+  const [pendingRename, setPendingRename] = useState<PendingRename | null>(null);
   const [focusQueue, setFocusQueue] = useState<Flashcard[]>(() => {
     const saved = localStorage.getItem("lite_obsidian_focus_queue");
     if (saved) {
@@ -680,91 +690,138 @@ if (savedHandle) {
 
   // Update note content or title
   // Update note content or title
-const handleUpdateNote = async (id: string, updates: Partial<Note>) => {
-  // Prevent duplicate titles on rename
-  if (updates.title !== undefined) {
-    const newTitle = updates.title.replace(/[<>:"/\\|?*]/g, '').trim();
-    if (!newTitle) {
-      delete updates.title;
-    } else {
-      updates.title = newTitle; // Ensure the sanitized title is what gets saved
-      const existing = notesByTitle.get(newTitle.toLowerCase());
-      if (existing && existing.id !== id) {
-        alert(`A note named "${newTitle}" already exists!`);
+  const executeRename = (pending: PendingRename, updateLinks: boolean, keepAsAlias: boolean) => {
+    let finalNotesArray = pending.updatedNotesArray;
+
+    if (updateLinks && pending.linkingNotes.length > 0) {
+      const oldTitle = pending.oldNote.title.trim();
+      const newTitle = pending.updatedNote.title.trim();
+      
+      finalNotesArray = finalNotesArray.map(n => {
+        if (pending.linkingNotes.some(ln => ln.id === n.id)) {
+          const newContent = updateLinksInContent(n.content, oldTitle, newTitle, keepAsAlias);
+          const modifiedNote = { ...n, content: newContent, updatedAt: new Date().toISOString() };
+          putNote(modifiedNote).catch(console.error);
+          return modifiedNote;
+        }
+        return n;
+      });
+    }
+
+    setNotes(finalNotesArray);
+
+    if (pending.filenameChanged) {
+      if (currentNoteId === pending.updatedNote.id || currentNoteId === pending.oldNote.id) {
+        setCurrentNoteId(pending.updatedNote.id);
+      }
+      setOpenNoteIds(prev => prev.map(tabId => tabId === pending.oldNote.id ? pending.updatedNote.id : tabId));
+    }
+
+    if (pending.filenameChanged) {
+      deleteNote(pending.oldNote.id).catch(console.error);
+    }
+    putNote(pending.updatedNote).catch(console.error);
+
+    if (vaultHandle) {
+      let originalTitle: string | null = pending.filenameChanged ? pending.oldNote.title.trim() : null;
+      let originalPath = pending.oldNote.path;
+
+      if (pendingWritesRef.current.has(pending.oldNote.id)) {
+        const prevPending = pendingWritesRef.current.get(pending.oldNote.id)!;
+        originalTitle = prevPending.oldTitle || originalTitle;
+        originalPath = prevPending.oldPath !== undefined ? prevPending.oldPath : originalPath;
+        pendingWritesRef.current.delete(pending.oldNote.id);
+      }
+
+      pendingWritesRef.current.set(pending.updatedNote.id, {
+        note: pending.updatedNote,
+        oldTitle: originalTitle,
+        oldPath: originalTitle ? originalPath : undefined
+      });
+
+      if (originalTitle) {
+        const oldFileId = (originalPath ? originalPath + "/" : "") + `${originalTitle}.md`;
+        pendingDeletionsRef.current.add(oldFileId);
+      }
+
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = setTimeout(flushVaultWrites, 1000);
+    }
+    
+    setPendingRename(null);
+  };
+
+  const handleUpdateNote = async (id: string, updates: Partial<Note>) => {
+    // Prevent duplicate titles on rename
+    if (updates.title !== undefined) {
+      const newTitle = updates.title.replace(/[<>:"/\\|?*]/g, '').trim();
+      if (!newTitle) {
+        delete updates.title;
+      } else {
+        updates.title = newTitle; // Ensure the sanitized title is what gets saved
+        const existing = notesByTitle.get(newTitle.toLowerCase());
+        if (existing && existing.id !== id) {
+          alert(`A note named "${newTitle}" already exists!`);
+          return;
+        }
+      }
+    }
+
+    let updatedNote: Note | null = null;
+    let oldNote: Note | null = notesById.get(id) || null;
+    let filenameChanged = false;
+
+    const updated = notes.map(note => {
+      if (note.id === id) {
+        updatedNote = {
+          ...note,
+          ...updates,
+          updatedAt: new Date().toISOString()
+        };
+        // Check if title actually changed
+        if (updates.title !== undefined && updates.title.trim() !== note.title.trim() && updates.title.trim() !== "") {
+          updatedNote.id = (updatedNote.path ? updatedNote.path + "/" : "") + `${updates.title.trim()}.md`;
+          filenameChanged = true;
+        }
+        return updatedNote;
+      }
+      return note;
+    });
+
+    if (!updatedNote || !oldNote) return;
+
+    if (filenameChanged) {
+      const oldTitleRaw = oldNote.title.trim();
+      const regex = new RegExp(`\\[\\[${escapeRegExp(oldTitleRaw)}(?:#[^\\]|]+)?(?:\\|[^\\]]+)?\\]\\]`, "i");
+      const linkingNotes = notes.filter(n => {
+        if (n.id === id) return false;
+        const matches = regex.test(n.content);
+        if (matches) console.log("Found linking note:", n.title);
+        return matches;
+      });
+
+      console.log("Renaming note:", oldTitleRaw, "to", updatedNote.title, "- linking notes count:", linkingNotes.length);
+
+      if (linkingNotes.length > 0) {
+        setPendingRename({
+          updatedNote: updatedNote!,
+          oldNote: oldNote,
+          filenameChanged,
+          updatedNotesArray: updated,
+          linkingNotes
+        });
         return;
       }
     }
-  }
 
-  let updatedNote: Note | null = null;
-  let oldNote: Note | null = notesById.get(id) || null;
-  let filenameChanged = false;
-
-  const updated = notes.map(note => {
-    if (note.id === id) {
-      updatedNote = {
-        ...note,
-        ...updates,
-        updatedAt: new Date().toISOString()
-      };
-      // Check if title actually changed
-      if (updates.title !== undefined && updates.title.trim() !== note.title.trim() && updates.title.trim() !== "") {
-        updatedNote.id = (updatedNote.path ? updatedNote.path + "/" : "") + `${updates.title.trim()}.md`;
-        filenameChanged = true;
-      }
-      return updatedNote;
-    }
-    return note;
-  });
-
-  if (!updatedNote) return;
-
-  setNotes(updated);
-
-  // Update active IDs synchronously before async ops to prevent Editor unmount blinking
-  if (filenameChanged) {
-    if (currentNoteId === id) {
-      setCurrentNoteId(updatedNote.id);
-    }
-    setOpenNoteIds(prev => prev.map(tabId => tabId === id ? updatedNote!.id : tabId));
-  }
-
-  if (filenameChanged && oldNote) {
-    deleteNote(oldNote.id).catch(console.error);
-  }
-  putNote(updatedNote).catch(console.error);
-
-  if (vaultHandle && updatedNote && oldNote) {
-    // Определяем "самое старое" название/путь, под которым файл ещё реально лежит на диске.
-    // Если уже есть незавершённая запись для oldNote.id — унаследуем её oldTitle/oldPath,
-    // чтобы цепочка быстрых переименований (A→B→C) корректно схлопывалась в одно A→C.
-    let originalTitle = filenameChanged ? oldNote.title.trim() : null;
-    let originalPath = oldNote.path;
-
-    if (pendingWritesRef.current.has(oldNote.id)) {
-      const prevPending = pendingWritesRef.current.get(oldNote.id)!;
-      originalTitle = prevPending.oldTitle || originalTitle;
-      originalPath = prevPending.oldPath !== undefined ? prevPending.oldPath : originalPath;
-      pendingWritesRef.current.delete(oldNote.id); // remove old ID from queue
-    }
-
-    pendingWritesRef.current.set(updatedNote.id, {
-      note: updatedNote,
-      oldTitle: originalTitle,
-      oldPath: originalTitle ? originalPath : undefined
-    });
-
-    // Файл под старым именем/путём ещё существует на диске до flush —
-    // помечаем его, чтобы фоновый sync не подхватил его как отдельную заметку
-    if (originalTitle) {
-      const oldFileId = (originalPath ? originalPath + "/" : "") + `${originalTitle}.md`;
-      pendingDeletionsRef.current.add(oldFileId);
-    }
-
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(flushVaultWrites, 1000);
-  }
-};
+    executeRename({
+      updatedNote: updatedNote!,
+      oldNote: oldNote,
+      filenameChanged,
+      updatedNotesArray: updated,
+      linkingNotes: []
+    }, false, false);
+  };
 
   const handleOpenDailyNote = () => {
   const today = new Date().toISOString().split('T')[0];
@@ -1277,6 +1334,21 @@ const handleUpdateNote = async (id: string, updates: Partial<Note>) => {
       <HelpDialog
         isOpen={isHelpOpen}
         onClose={() => setIsHelpOpen(false)}
+      />
+
+      <RenameLinksModal
+        isOpen={!!pendingRename}
+        oldTitle={pendingRename?.oldNote.title || ""}
+        newTitle={pendingRename?.updatedNote.title || ""}
+        linkedNotesCount={pendingRename?.linkingNotes.length || 0}
+        onConfirm={(updateLinks, keepAsAlias) => {
+          if (pendingRename) {
+            executeRename(pendingRename, updateLinks, keepAsAlias);
+          }
+        }}
+        onCancel={() => {
+          setPendingRename(null);
+        }}
       />
     </div>
   );
