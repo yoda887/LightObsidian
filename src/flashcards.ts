@@ -510,28 +510,46 @@ export function calculateNextReview(ease: number, interval: number, grade: "hard
 }
 
 export function updateFlashcardInContent(content: string, card: Flashcard, grade: "hard" | "good" | "easy"): string {
-  const { newInterval, newEase } = calculateNextReview(card.ease, card.interval, grade);
+  // Re-extract cards from the CURRENT content to get the up-to-date representation of this card
+  // This prevents bugs where `card.fullMatch` becomes stale because another card was answered in the same session
+  const dummyNote: Note = {
+    id: card.noteId,
+    title: card.noteTitle,
+    content: content,
+    createdAt: "",
+    updatedAt: ""
+  };
+  const upToDateCards = extractFlashcards([dummyNote]);
+  
+  const liveCard = upToDateCards.find(c => 
+    c.question === card.question && 
+    c.answer === card.answer && 
+    c.type === card.type && 
+    c.isReverseDirection === card.isReverseDirection
+  ) || card;
+
+  const { newInterval, newEase } = calculateNextReview(liveCard.ease, liveCard.interval, grade);
   
   const nextDate = new Date();
   nextDate.setDate(nextDate.getDate() + newInterval);
   const nextReviewTime = nextDate.getTime();
 
-  const isYaml = card.fullMatch.startsWith("YAML_CARD:");
+  const isYaml = liveCard.fullMatch.startsWith("YAML_CARD:");
 
   if (isYaml) {
-    return updateYamlCardsInContent(content, card.question, {
-      question: card.question,
-      answer: card.answer,
+    return updateYamlCardsInContent(content, liveCard.question, {
+      question: liveCard.question,
+      answer: liveCard.answer,
       nextReview: nextReviewTime,
       interval: newInterval,
       ease: newEase
     });
-  } else if (card.type === "mcq") {
+  } else if (liveCard.type === "mcq") {
     const nextDateStr = nextDate.toISOString().split('T')[0];
     const srComment = `<!--SR:${nextDateStr},${newInterval},${newEase.toFixed(1)}-->`;
-    let cleanMatch = card.fullMatch.replace(/\r?\n\s*<!--SR:[^>]+-->\s*\r?\n:::/, "\n:::");
+    let cleanMatch = liveCard.fullMatch.replace(/\r?\n\s*<!--SR:[^>]+-->\s*\r?\n:::/, "\n:::");
     const newCardStr = cleanMatch.replace(/\r?\n:::$/, `\n${srComment}\n:::`);
-    return content.replace(card.fullMatch, newCardStr);
+    return content.replace(liveCard.fullMatch, newCardStr);
   } else {
     const nextDateStr = nextDate.toISOString().split('T')[0];
     const newSched = `${nextDateStr},${newInterval},${newEase.toFixed(1)}`;
@@ -539,28 +557,28 @@ export function updateFlashcardInContent(content: string, card: Flashcard, grade
     let fwd = "2000-01-01,1,250";
     let rev = "2000-01-01,1,250";
 
-    const srMatch = card.fullMatch.match(/<!--SR:([^>]+)-->/);
+    const srMatch = liveCard.fullMatch.match(/<!--SR:([^>]+)-->/);
     if (srMatch && srMatch[1]) {
       const parts = srMatch[1].split('!');
       fwd = parts[0] || "2000-01-01,1,250";
       rev = parts[1] || "2000-01-01,1,250";
     }
 
-    if (card.isReverseDirection) {
+    if (liveCard.isReverseDirection) {
       rev = newSched;
     } else {
       fwd = newSched;
     }
 
     let newSrComment = `<!--SR:${fwd}-->`;
-    if (card.type === "reversed") {
+    if (liveCard.type === "reversed") {
       newSrComment = `<!--SR:${fwd}!${rev}-->`;
     }
 
-    let cleanMatch = card.fullMatch.replace(/(?:\s*<!--SR:[^>]+-->)+$/, '');
+    let cleanMatch = liveCard.fullMatch.replace(/(?:\s*<!--SR:[^>]+-->)+$/, '');
     const newCardStr = `${cleanMatch}\n${newSrComment}`;
 
-    return content.replace(card.fullMatch, newCardStr);
+    return content.replace(liveCard.fullMatch, newCardStr);
   }
 }
 
