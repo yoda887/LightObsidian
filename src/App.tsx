@@ -1013,7 +1013,8 @@ const notesByTitle = useMemo(() => {
   editorMode: string,
   options: {
     customTitle: string;
-    asEmbed: boolean;
+    asEmbed?: boolean;
+    insertType?: "embed" | "link" | "block";
     nearestHeading: string | null;
   },
   selectionStart?: number,
@@ -1024,7 +1025,6 @@ const notesByTitle = useMemo(() => {
 
   let title = options.customTitle;
   let index = 1;
-  // Make sure the title is unique
   while (notesByTitle.has(title.toLowerCase())) {
     index++;
     title = `${options.customTitle} (${index})`;
@@ -1033,13 +1033,20 @@ const notesByTitle = useMemo(() => {
   const filename = `${title}.md`;
   const todayStr = new Date().toISOString().split("T")[0];
   
-  // Format the source string
+  const insertType = options.insertType || (options.asEmbed ? "embed" : "link");
+  
   let sourceLink = `[[${parentNote.title}]]`;
-  if (options.nearestHeading) {
+  if (insertType !== "block" && options.nearestHeading) {
     sourceLink = `[[${parentNote.title}#${options.nearestHeading}]]`;
   }
   
-  const newNoteContent = `---\nir_next_read: "${todayStr}"\nir_interval: 1\nir_ease: 2.5\nir_priority: 60\nir_last_offset: 0\nir_source: "${sourceLink}"\n---\n${extractText}`;
+  const blockId = `ext-${Math.random().toString(36).substring(2, 8)}`;
+  
+  const newContentBody = insertType === "block" 
+    ? `![[${parentNote.title}#^${blockId}]]`
+    : extractText;
+    
+  const newNoteContent = `---\nir_next_read: "${todayStr}"\nir_interval: 1\nir_ease: 2.5\nir_priority: 60\nir_last_offset: 0\nir_source: "${sourceLink}"\n---\n${newContentBody}`;
 
   const newNote: Note = {
     id: parentNote.path ? `${parentNote.path}/${filename}` : filename,
@@ -1050,7 +1057,15 @@ const notesByTitle = useMemo(() => {
     path: parentNote.path
   };
 
-  const linkStr = options.asEmbed ? `![[${title}]]` : `[[${title}]]`;
+  let replacementText = "";
+  if (insertType === "embed") {
+    replacementText = `![[${title}]]`;
+  } else if (insertType === "link") {
+    replacementText = `[[${title}]]`;
+  } else if (insertType === "block") {
+    replacementText = `${extractText}\n%%[[${title}]]%%^${blockId}`;
+  }
+
   let updatedParentContent = "";
 
   if (editorMode === "dynamic" || editorMode === "edit" || editorMode === "split") {
@@ -1060,19 +1075,19 @@ const notesByTitle = useMemo(() => {
       const startsWithFm = parentNote.content.startsWith("---");
 
       if (startsWithFm && hideYamlActive) {
-        const newBody = body.substring(0, selectionStart) + linkStr + body.substring(selectionEnd);
+        const newBody = body.substring(0, selectionStart) + replacementText + body.substring(selectionEnd);
         updatedParentContent = frontmatter + newBody;
       } else {
-        updatedParentContent = parentNote.content.substring(0, selectionStart) + linkStr + parentNote.content.substring(selectionEnd);
+        updatedParentContent = parentNote.content.substring(0, selectionStart) + replacementText + parentNote.content.substring(selectionEnd);
       }
     } else {
       const { frontmatter, body } = splitFrontmatter(parentNote.content);
-      const newBody = replacePlaintextInMarkdown(body, extractText, linkStr);
+      const newBody = replacePlaintextInMarkdown(body, extractText, replacementText);
       updatedParentContent = frontmatter ? frontmatter + newBody : newBody;
     }
   } else {
     const { frontmatter, body } = splitFrontmatter(parentNote.content);
-    const newBody = replacePlaintextInMarkdown(body, extractText, linkStr);
+    const newBody = replacePlaintextInMarkdown(body, extractText, replacementText);
     updatedParentContent = frontmatter ? frontmatter + newBody : newBody;
   }
 

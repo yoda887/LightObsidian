@@ -57,7 +57,8 @@ interface EditorProps {
     editorMode: string,
     options: {
       customTitle: string;
-      asEmbed: boolean;
+      asEmbed?: boolean;
+      insertType?: "embed" | "link" | "block";
       nearestHeading: string | null;
     },
     selectionStart?: number,
@@ -330,7 +331,19 @@ export default function Editor({
     if (userInput === null) return; 
     const customTitle = (userInput.trim() || defaultTitle).replace(/:/g, "");
     
-    const asEmbed = window.confirm("Insert as an Embedded note?\n\n[OK] = Embed (![[...]])\n[Cancel] = Link ([[...]])");
+    const promptMsg = "Select insertion type for this extract:\n" +
+      "1 - Embed (![[Note Title]])\n" +
+      "2 - Link ([[Note Title]])\n" +
+      "3 - Block Transclusion (Keep text in source with ^block-id, embed in new note)";
+    const insertionChoice = window.prompt(promptMsg, "1");
+    if (insertionChoice === null) return; 
+
+    let insertType: "embed" | "link" | "block" = "embed";
+    if (insertionChoice.trim() === "2") {
+      insertType = "link";
+    } else if (insertionChoice.trim() === "3") {
+      insertType = "block";
+    }
     
     let nearestHeading: string | null = null;
     let textBefore = "";
@@ -351,7 +364,7 @@ export default function Editor({
     
     const options = {
       customTitle,
-      asEmbed,
+      insertType,
       nearestHeading
     };
     
