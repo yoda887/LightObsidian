@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { Note } from '../types';
+import { escapeRegExp } from '../utils';
 
 export interface CustomWYSIWYGRef {
   insertMarkdown: (before: string, after?: string) => void;
@@ -27,7 +28,7 @@ interface AutocompleteState {
   selectedIndex: number;
 }
 
-const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode: boolean = false) => {
+const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode: boolean = false, notes: Note[] = []) => {
   // Escape HTML
   let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -90,6 +91,74 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
 
     // Inline formatting
     let processed = line;
+
+    // Check if entire line is a transclusion embed: ![[...]] (with nothing else on the line)
+    const embedLineMatch = processed.match(/^!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]$/);
+    if (embedLineMatch && notes.length > 0) {
+      const cleanTarget = embedLineMatch[1].trim();
+      const hashIdx = cleanTarget.indexOf('#');
+      let noteTitle = cleanTarget;
+      let anchor: string | null = null;
+      if (hashIdx > -1) {
+        noteTitle = cleanTarget.substring(0, hashIdx).trim();
+        anchor = cleanTarget.substring(hashIdx).trim();
+      }
+      // Unescape HTML entities for matching
+      const unescTitle = noteTitle.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+      const targetNote = notes.find(n => n.title.trim().toLowerCase() === unescTitle.toLowerCase());
+      if (targetNote) {
+        let childContent = targetNote.content;
+        // Strip YAML frontmatter
+        childContent = childContent.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '');
+        if (anchor) {
+          if (anchor.startsWith('#^')) {
+            const blockId = anchor.substring(1).trim();
+            const paragraphs = childContent.split(/\r?\n\r?\n/);
+            let foundParagraph = '';
+            for (const p of paragraphs) {
+              if (p.trim().includes(blockId)) {
+                foundParagraph = p.replace(new RegExp(`\\s*${escapeRegExp(blockId)}\\s*$`), '').trim();
+                break;
+              }
+            }
+            if (foundParagraph) {
+              childContent = foundParagraph;
+            } else {
+              childContent = `Block ${blockId} not found`;
+            }
+          } else {
+            const headerText = anchor.substring(1).trim().toLowerCase();
+            const cLines = childContent.split(/\r?\n/);
+            let startIdx = -1;
+            let headerLevel = 0;
+            for (let i = 0; i < cLines.length; i++) {
+              const hMatch = cLines[i].match(/^(#+)\s+(.+)$/);
+              if (hMatch && hMatch[2].trim().toLowerCase() === headerText) {
+                startIdx = i;
+                headerLevel = hMatch[1].length;
+                break;
+              }
+            }
+            if (startIdx !== -1) {
+              const sectionLines: string[] = [cLines[startIdx]];
+              for (let i = startIdx + 1; i < cLines.length; i++) {
+                const hMatch = cLines[i].match(/^(#+)\s+(.+)$/);
+                if (hMatch && hMatch[1].length <= headerLevel) break;
+                sectionLines.push(cLines[i]);
+              }
+              childContent = sectionLines.join('\n');
+            } else {
+              childContent = `Header "${anchor.substring(1)}" not found`;
+            }
+          }
+        }
+        // Escape the resolved content for safe HTML display
+        const safeContent = childContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const previewLines = safeContent.split('\n').slice(0, 6).join('<br/>');
+        const safeTarget = cleanTarget.replace(/"/g, '&quot;');
+        return `<span class="md-line${zenClass}"><span contenteditable="false" class="md-embed-block inline-block w-full border-l-4 border-indigo-500 pl-3 py-1.5 pr-2 my-0.5 bg-slate-50 dark:bg-zinc-900 rounded-r shadow-sm cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors" data-note="${safeTarget}"><span class="text-[10px] font-mono text-indigo-400 dark:text-indigo-500 opacity-70 select-none">![[${cleanTarget}]]</span><br/><span class="text-sm text-slate-700 dark:text-zinc-300">${previewLines}</span></span></span>`;
+      }
+    }
     
     // Flashcard Q :: A
     processed = processed.replace(/(\s+::\s+)(.*)$/, (match, sep, answer) => {
@@ -168,7 +237,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
         // Save caret if we are just toggling zen mode so we don't lose it
         const caret = prevIsZenMode.current !== isZenMode ? getCaretOffset() : null;
         
-        editorRef.current.innerHTML = highlightMarkdown(content, activeLineIndex, isZenMode);
+        editorRef.current.innerHTML = highlightMarkdown(content, activeLineIndex, isZenMode, notes);
         previousContent.current = content;
         prevIsZenMode.current = isZenMode;
         
@@ -225,7 +294,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
         const tempCaret = start + before.length + selectedText.length;
         const textBefore = newText.substring(0, tempCaret);
         const lineIdx = isZenMode ? textBefore.split('\n').length - 1 : -1;
-        el.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false);
+        el.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false, notes);
         setCaretOffset(tempCaret);
         if (isZenMode) setActiveLineIndex(lineIdx);
         setTimeout(() => el.focus(), 0);
@@ -274,7 +343,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
       const tempCaret = start + replacement.length;
       const textBefore = newText.substring(0, tempCaret);
       const lineIdx = isZenMode ? textBefore.split('\n').length - 1 : -1;
-      el.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false);
+      el.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false, notes);
       setCaretOffset(tempCaret);
       if (isZenMode) setActiveLineIndex(lineIdx);
     },
@@ -383,7 +452,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
       // Update HTML to reflect new highlighting
       const textBefore = newText.substring(0, caretOffset);
       const lineIdx = isZenMode ? textBefore.split('\n').length - 1 : -1;
-      editorRef.current.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false);
+      editorRef.current.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false, notes);
       
       // Restore caret
       setCaretOffset(caretOffset);
@@ -470,7 +539,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
           previousContent.current = newText;
           onChange(newText);
           if (editorRef.current) {
-            editorRef.current.innerHTML = highlightMarkdown(newText);
+            editorRef.current.innerHTML = highlightMarkdown(newText, -1, false, notes);
             setCaretOffset(newCaretOffset);
           }
           setAutocomplete(prev => ({ ...prev, active: false }));
@@ -489,7 +558,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
         previousContent.current = newText;
         onChange(newText);
         if (editorRef.current) {
-          editorRef.current.innerHTML = highlightMarkdown(newText);
+          editorRef.current.innerHTML = highlightMarkdown(newText, -1, false, notes);
           setCaretOffset(caretOffset + 1); // Move inside [[|]]
         }
         // Open autocomplete immediately
@@ -523,7 +592,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
         const tempCaret = caretOffset + 1;
         const textBefore = newText.substring(0, tempCaret);
         const lineIdx = isZenMode ? textBefore.split('\n').length - 1 : -1;
-        editorRef.current.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false);
+        editorRef.current.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false, notes);
         setCaretOffset(tempCaret);
         if (isZenMode) setActiveLineIndex(lineIdx);
       }
@@ -540,7 +609,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
         const tempCaret = caretOffset + 2;
         const textBefore = newText.substring(0, tempCaret);
         const lineIdx = isZenMode ? textBefore.split('\n').length - 1 : -1;
-        editorRef.current.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false);
+        editorRef.current.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false, notes);
         setCaretOffset(tempCaret);
         if (isZenMode) setActiveLineIndex(lineIdx);
       }
@@ -615,7 +684,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
                  if (editorRef.current) {
                    const textBefore = newText.substring(0, newCaretOffset);
                    const lineIdx = isZenMode ? textBefore.split('\n').length - 1 : -1;
-                   editorRef.current.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false);
+                   editorRef.current.innerHTML = highlightMarkdown(newText, lineIdx, isZenMode || false, notes);
                    setCaretOffset(newCaretOffset);
                    if (isZenMode) setActiveLineIndex(lineIdx);
                  }

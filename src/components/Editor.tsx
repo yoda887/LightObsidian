@@ -194,6 +194,14 @@ export default function Editor({
   const [showCardDropdown, setShowCardDropdown] = useState(false);
   const [scheduledMessage, setScheduledMessage] = useState<string | null>(null);
   const [showEarlyReview, setShowEarlyReview] = useState(false);
+  const [extractModal, setExtractModal] = useState<{
+    open: boolean;
+    customTitle: string;
+    textToExtract: string;
+    start?: number;
+    end?: number;
+    nearestHeading: string | null;
+  } | null>(null);
 
   // Reset scheduled message and early review state when note changes
   useEffect(() => {
@@ -331,20 +339,6 @@ export default function Editor({
     if (userInput === null) return; 
     const customTitle = (userInput.trim() || defaultTitle).replace(/:/g, "");
     
-    const promptMsg = "Select insertion type for this extract:\n" +
-      "1 - Embed (![[Note Title]])\n" +
-      "2 - Link ([[Note Title]])\n" +
-      "3 - Block Transclusion (Keep text in source with ^block-id, embed in new note)";
-    const insertionChoice = window.prompt(promptMsg, "1");
-    if (insertionChoice === null) return; 
-
-    let insertType: "embed" | "link" | "block" = "embed";
-    if (insertionChoice.trim() === "2") {
-      insertType = "link";
-    } else if (insertionChoice.trim() === "3") {
-      insertType = "block";
-    }
-    
     let nearestHeading: string | null = null;
     let textBefore = "";
     if (start !== undefined && textareaRef.current) {
@@ -361,6 +355,21 @@ export default function Editor({
         nearestHeading = headings[headings.length - 1].replace(/^#{1,6}\s+/, "").trim();
       }
     }
+    
+    setExtractModal({
+      open: true,
+      customTitle,
+      textToExtract,
+      start,
+      end,
+      nearestHeading
+    });
+  };
+
+  const handleExtractModalChoice = async (insertType: "embed" | "link" | "block") => {
+    if (!extractModal || !onExtractNote) return;
+    const { customTitle, textToExtract, start, end, nearestHeading } = extractModal;
+    setExtractModal(null);
     
     const options = {
       customTitle,
@@ -1348,6 +1357,59 @@ export default function Editor({
                 </button>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Extract Type Selection Modal */}
+      {extractModal?.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setExtractModal(null)}>
+          <div
+            className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl border border-slate-200 dark:border-zinc-700 p-6 w-[380px] max-w-[90vw] space-y-4 animate-in fade-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-center">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-zinc-100 mb-1">Extract Note</h3>
+              <p className="text-xs text-slate-500 dark:text-zinc-400">Select how to insert the link in the source note</p>
+            </div>
+            <div className="space-y-2">
+              <button
+                onClick={() => handleExtractModalChoice("embed")}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/50 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 hover:border-indigo-300 dark:hover:border-indigo-700 transition-all group cursor-pointer"
+              >
+                <span className="text-xl shrink-0">📦</span>
+                <div className="text-left">
+                  <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">Embed</div>
+                  <div className="text-[11px] text-slate-400 dark:text-zinc-500">Replace text with <code className="font-mono text-indigo-500">{"![[Note]]"}</code></div>
+                </div>
+              </button>
+              <button
+                onClick={() => handleExtractModalChoice("link")}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/50 hover:bg-violet-50 dark:hover:bg-violet-950/30 hover:border-violet-300 dark:hover:border-violet-700 transition-all group cursor-pointer"
+              >
+                <span className="text-xl shrink-0">🔗</span>
+                <div className="text-left">
+                  <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 group-hover:text-violet-600 dark:group-hover:text-violet-400">Link</div>
+                  <div className="text-[11px] text-slate-400 dark:text-zinc-500">Replace text with <code className="font-mono text-violet-500">{"[[Note]]"}</code></div>
+                </div>
+              </button>
+              <button
+                onClick={() => handleExtractModalChoice("block")}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/50 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 dark:hover:border-emerald-700 transition-all group cursor-pointer"
+              >
+                <span className="text-xl shrink-0">🧩</span>
+                <div className="text-left">
+                  <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400">Block Transclusion</div>
+                  <div className="text-[11px] text-slate-400 dark:text-zinc-500">Keep text, add <code className="font-mono text-emerald-500">^block-id</code>, embed in new note</div>
+                </div>
+              </button>
+            </div>
+            <button
+              onClick={() => setExtractModal(null)}
+              className="w-full text-center text-xs text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 py-1 cursor-pointer transition-colors"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}
