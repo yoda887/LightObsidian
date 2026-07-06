@@ -131,6 +131,9 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
     // SR Comments
     processed = processed.replace(/&lt;!--SR:.*?--&gt;/g, '<span class="text-slate-300 dark:text-zinc-600 font-mono opacity-60">$&</span>');
 
+    // Block identifiers (e.g. ^block-id)
+    processed = processed.replace(/(\^[\w\-]+)$/, '<span class="md-block-id font-mono text-[10px] text-violet-500 opacity-60 ml-2 select-none font-bold bg-violet-50 dark:bg-violet-950/40 px-1.5 py-0.5 rounded border border-violet-200/50 dark:border-violet-800/30">$1</span>');
+
     return `<span class="md-line${zenClass}">${processed}</span>`;
   });
 

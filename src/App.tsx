@@ -138,6 +138,7 @@ const notesByTitle = useMemo(() => {
   const [isZenMode, setIsZenMode] = useState<boolean>(false);
   const [restoreScrollNoteId, setRestoreScrollNoteId] = useState<string | null>(null);
   const [restoreScrollKey, setRestoreScrollKey] = useState(0);
+  const [activeAnchor, setActiveAnchor] = useState<string | null>(null);
   const [sessionOffsets, setSessionOffsets] = useState<Record<string, number>>({});
 
   const handleSaveSessionOffset = (noteId: string, offset: number) => {
@@ -701,13 +702,14 @@ const notesByTitle = useMemo(() => {
   };
 
   // Select note
-  const handleSelectNote = (id: string, options?: { startReading?: boolean }) => {
+  const handleSelectNote = (id: string, options?: { startReading?: boolean; anchor?: string | null }) => {
     if (pendingWritesRef.current.size > 0) {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       flushVaultWrites(true);
     }
 
     setCurrentNoteId(id);
+    setActiveAnchor(options?.anchor || null);
     setOpenNoteIds(prev => prev.includes(id) ? prev : [...prev, id]);
     if (appMode === "graph") setAppMode("split");
     if (options?.startReading) {
@@ -987,21 +989,23 @@ const notesByTitle = useMemo(() => {
   };
 
   const handleWikilinkClick = (noteTitle: string) => {
-  let lookupTitle = noteTitle.trim();
-  const hashIdx = lookupTitle.indexOf("#");
-  if (hashIdx > -1) {
-    lookupTitle = lookupTitle.substring(0, hashIdx).trim();
-  }
-  const found = notesByTitle.get(lookupTitle.toLowerCase());
-  if (found) {
-    handleSelectNote(found.id);
-  } else {
-    const userConfirmed = confirm(`Note "${lookupTitle}" does not exist. Would you like to create it?`);
-    if (userConfirmed) {
-      handleCreateNote("", lookupTitle);
+    let lookupTitle = noteTitle.trim();
+    let anchor: string | undefined = undefined;
+    const hashIdx = lookupTitle.indexOf("#");
+    if (hashIdx > -1) {
+      anchor = lookupTitle.substring(hashIdx).trim();
+      lookupTitle = lookupTitle.substring(0, hashIdx).trim();
     }
-  }
-};
+    const found = notesByTitle.get(lookupTitle.toLowerCase());
+    if (found) {
+      handleSelectNote(found.id, { anchor });
+    } else {
+      const userConfirmed = confirm(`Note "${lookupTitle}" does not exist. Would you like to create it?`);
+      if (userConfirmed) {
+        handleCreateNote("", lookupTitle);
+      }
+    }
+  };
 
   const handleExtractNote = async (
   parentNoteId: string,
@@ -1396,6 +1400,8 @@ const notesByTitle = useMemo(() => {
                 restoreScrollKey={restoreScrollKey}
                 sessionOffset={sessionOffsets[currentNote.id] || 0}
                 onSaveSessionOffset={handleSaveSessionOffset}
+                activeAnchor={activeAnchor}
+                onClearActiveAnchor={() => setActiveAnchor(null)}
               />
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center space-y-4 p-8 text-center bg-slate-50 dark:bg-zinc-950">

@@ -46,23 +46,88 @@ export async function parseMarkdownToHtml(content: string, notes: Note[] = [], d
   // Скрываем комментарии %%...%% на этапе подготовки контента (используем HTML-комментарии)
   content = content.replace(/%%([\s\S]*?)%%/g, '<!--$1-->');
 
-  // Handle transclusions: ![[Note Title]]
+  // Handle transclusions: ![[Note Title]] or ![[Note Title#^block-id]] or ![[Note Title#Heading]]
   const transclusions = Array.from(content.matchAll(/!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g));
   for (const match of transclusions) {
     const cleanTarget = match[1].trim();
-    const targetNote = notes.find(n => n.title.trim().toLowerCase() === cleanTarget.toLowerCase());
+    const hashIdx = cleanTarget.indexOf("#");
+    let noteTitle = cleanTarget;
+    let anchor: string | null = null;
+    if (hashIdx > -1) {
+      noteTitle = cleanTarget.substring(0, hashIdx).trim();
+      anchor = cleanTarget.substring(hashIdx).trim();
+    }
+
+    const targetNote = notes.find(n => n.title.trim().toLowerCase() === noteTitle.toLowerCase());
     
     let embedHtml = "";
     if (targetNote) {
       let childContent = targetNote.content;
-      if (cleanTarget.startsWith("Extract:")) {
+      
+      const childFrontmatterRegex = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/;
+      childContent = childContent.replace(childFrontmatterRegex, "");
+
+      if (noteTitle.startsWith("Extract:")) {
         childContent = childContent.replace(/^#\s+Extract:[^\r\n]*(?:\r?\n)*/m, "");
         childContent = childContent.replace(/^Source:\s+\[\[[^\]]*\]\](?:\r?\n)*/m, "");
       }
+
+      if (anchor) {
+        if (anchor.startsWith("#^")) {
+          const blockId = anchor.substring(1).trim();
+          const paragraphs = childContent.split(/\r?\n\r?\n/);
+          let foundParagraph = "";
+          for (const p of paragraphs) {
+            if (p.trim().includes(blockId)) {
+              foundParagraph = p.replace(new RegExp(`\\s*${escapeRegExp(blockId)}\\s*$`), "").trim();
+              break;
+            }
+          }
+          if (foundParagraph) {
+            childContent = foundParagraph;
+          } else {
+            childContent = `<span class="text-rose-500 font-semibold italic">Block ${blockId} not found in note "${noteTitle}"</span>`;
+          }
+        } else {
+          const headerText = anchor.substring(1).trim().toLowerCase();
+          const lines = childContent.split(/\r?\n/);
+          let startIdx = -1;
+          let headerLevel = 0;
+          
+          for (let i = 0; i < lines.length; i++) {
+            const match = lines[i].match(/^(#+)\s+(.+)$/);
+            if (match && match[2].trim().toLowerCase() === headerText) {
+              startIdx = i;
+              headerLevel = match[1].length;
+              break;
+            }
+          }
+          
+          if (startIdx !== -1) {
+            const sectionLines: string[] = [];
+            sectionLines.push(lines[startIdx]);
+            
+            for (let i = startIdx + 1; i < lines.length; i++) {
+              const match = lines[i].match(/^(#+)\s+(.+)$/);
+              if (match) {
+                const nextLevel = match[1].length;
+                if (nextLevel <= headerLevel) {
+                  break;
+                }
+              }
+              sectionLines.push(lines[i]);
+            }
+            childContent = sectionLines.join("\n");
+          } else {
+            childContent = `<span class="text-rose-500 font-semibold italic">Header "${anchor.substring(1)}" not found in note "${noteTitle}"</span>`;
+          }
+        }
+      }
+
       const parsedChild = await parseMarkdownToHtml(childContent, notes, depth + 1);
       embedHtml = `<div class="transclusion relative border-l-4 border-indigo-500 pl-4 py-2 pr-8 my-4 bg-slate-50 dark:bg-zinc-900 rounded-r shadow-sm group"><div class="absolute top-2 right-2 opacity-50 hover:opacity-100 cursor-pointer text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300 transition-opacity p-1 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900/50" data-note="${encodeURIComponent(cleanTarget)}" title="Open note">🔗</div><div class="embed-content">${parsedChild}</div></div>`;
     } else {
-      embedHtml = `<div class="transclusion relative border-l-4 border-slate-300 dark:border-zinc-700 pl-4 py-2 pr-8 my-4 bg-slate-50 dark:bg-zinc-900 rounded-r shadow-sm group"><div class="absolute top-2 right-2 opacity-50 hover:opacity-100 cursor-pointer text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 transition-opacity p-1 rounded hover:bg-slate-200 dark:hover:bg-zinc-800" data-note="${encodeURIComponent(cleanTarget)}" title="Click to create">🔗</div><div class="text-slate-500 dark:text-zinc-500 text-sm italic">Note "${cleanTarget}" not found. Click icon to create.</div></div>`;
+      embedHtml = `<div class="transclusion relative border-l-4 border-slate-300 dark:border-zinc-700 pl-4 py-2 pr-8 my-4 bg-slate-50 dark:bg-zinc-900 rounded-r shadow-sm group"><div class="absolute top-2 right-2 opacity-50 hover:opacity-100 cursor-pointer text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 transition-opacity p-1 rounded hover:bg-slate-200 dark:hover:bg-zinc-800" data-note="${encodeURIComponent(cleanTarget)}" title="Click to create">🔗</div><div class="text-slate-500 dark:text-zinc-500 text-sm italic">Note "${noteTitle}" not found. Click icon to create.</div></div>`;
     }
     content = content.replace(match[0], embedHtml);
   }
@@ -116,6 +181,9 @@ export async function parseMarkdownToHtml(content: string, notes: Note[] = [], d
     }
     return `${prefix}<span class="px-1.5 py-0.5 bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 rounded-md text-xs font-medium mx-0.5 inline-block">${tag}</span>`;
   });
+
+  // Replace block identifiers (e.g. ^block-id) at the end of HTML block elements
+  parsed = parsed.replace(/(\^[\w\-]+)(?=\s*<\/p>|\s*<\/li>|\s*<\/div>|\s*$)/g, '<span class="block-id font-mono text-[10px] text-violet-500 opacity-60 ml-2 select-none font-bold bg-violet-50 dark:bg-violet-950/40 px-1.5 py-0.5 rounded border border-violet-200/50 dark:border-violet-800/30">$1</span>');
 
 // ИЗМЕНЕНИЕ: Находим комментарии %%...%% и оборачиваем их в скрытый тег
   //const contentWithHiddenComments = content.replace(/%%([\s\S]*?)%%/g, '<span class="obsidian-comment" style="display: none;">$1</span>');

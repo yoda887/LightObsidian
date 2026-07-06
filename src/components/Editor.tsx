@@ -45,7 +45,7 @@ interface EditorProps {
   settings: AppSettings;
   isZenMode?: boolean;
   onUpdateNote: (id: string, updates: Partial<Note>) => void;
-  onSelectNote: (id: string, options?: { startReading?: boolean }) => void;
+  onSelectNote: (id: string, options?: { startReading?: boolean; anchor?: string | null }) => void;
   shouldRestoreScroll?: boolean;
   restoreScrollKey?: number;
   sessionOffset?: number;
@@ -63,6 +63,8 @@ interface EditorProps {
     selectionStart?: number,
     selectionEnd?: number
   ) => Promise<Note | null>;
+  activeAnchor?: string | null;
+  onClearActiveAnchor?: () => void;
 }
 
 export default function Editor({
@@ -79,6 +81,8 @@ export default function Editor({
   restoreScrollKey,
   sessionOffset,
   onSaveSessionOffset,
+  activeAnchor,
+  onClearActiveAnchor,
 }: EditorProps) {
   
   const renderStringWithLinks = (text: string) => {
@@ -437,6 +441,102 @@ export default function Editor({
       }
     };
   }, [note.id, shouldRestoreScroll, mode, sessionOffset, restoreScrollKey]);
+
+  useEffect(() => {
+    if (!activeAnchor) return;
+
+    let timer: NodeJS.Timeout;
+    
+    timer = setTimeout(() => {
+      let targetOffset = -1;
+      const lowerContent = note.content.toLowerCase();
+
+      if (activeAnchor.startsWith("#^")) {
+        const blockId = activeAnchor.substring(1).toLowerCase();
+        const idx = lowerContent.indexOf(blockId);
+        if (idx !== -1) {
+          targetOffset = idx;
+        }
+      } else if (activeAnchor.startsWith("#")) {
+        const headerText = activeAnchor.substring(1).trim().toLowerCase();
+        const lines = note.content.split('\n');
+        let currentOffset = 0;
+        for (const line of lines) {
+          const match = line.match(/^#+\s+(.+)$/);
+          if (match && match[1].trim().toLowerCase() === headerText) {
+            targetOffset = currentOffset;
+            break;
+          }
+          currentOffset += line.length + 1;
+        }
+
+        if (targetOffset === -1) {
+          const idx = lowerContent.indexOf(headerText);
+          if (idx !== -1) {
+            targetOffset = idx;
+          }
+        }
+      }
+
+      if (targetOffset !== -1) {
+        if ((mode === "dynamic" || mode === "edit" || mode === "split") && wysiwygRef.current) {
+          wysiwygRef.current.setCaretOffset(targetOffset);
+          wysiwygRef.current.scrollToOffset(targetOffset);
+        } else if (textareaRef.current) {
+          const tx = textareaRef.current;
+          tx.focus();
+          tx.selectionStart = targetOffset;
+          tx.selectionEnd = targetOffset;
+          
+          const textLen = tx.value.length;
+          if (textLen > 0) {
+            const percentage = targetOffset / textLen;
+            tx.scrollTop = (tx.scrollHeight * percentage) - (tx.clientHeight / 2);
+          }
+        }
+      }
+
+      if (mode === "preview" || mode === "split") {
+        const previewContainer = previewContainerRef.current;
+        if (previewContainer) {
+          if (activeAnchor.startsWith("#^")) {
+            const blockId = activeAnchor.substring(1).toLowerCase();
+            const els = previewContainer.querySelectorAll("p, span, div, li") as NodeListOf<HTMLElement>;
+            for (const el of Array.from(els)) {
+              if (el.textContent && el.textContent.toLowerCase().includes(blockId)) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                break;
+              }
+            }
+          } else if (activeAnchor.startsWith("#")) {
+            const headerText = activeAnchor.substring(1).trim().toLowerCase();
+            const headers = previewContainer.querySelectorAll("h1, h2, h3, h4, h5, h6") as NodeListOf<HTMLElement>;
+            let foundHeader = false;
+            for (const h of Array.from(headers)) {
+              if (h.textContent?.trim().toLowerCase() === headerText) {
+                h.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                foundHeader = true;
+                break;
+              }
+            }
+            if (!foundHeader) {
+              const els = previewContainer.querySelectorAll("p, span, div, li") as NodeListOf<HTMLElement>;
+              for (const el of Array.from(els)) {
+                if (el.textContent?.trim().toLowerCase().includes(headerText)) {
+                  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      onClearActiveAnchor?.();
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [note.id, activeAnchor, mode]);
 
   const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
