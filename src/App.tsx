@@ -173,70 +173,177 @@ const notesByTitle = useMemo(() => {
     }
   }, [darkMode]);
 
+  useEffect(() => {
+    const handleBeforeUnloadOrHide = () => {
+      if (pendingWritesRef.current.size > 0) {
+        flushVaultWrites(true);
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnloadOrHide);
+    window.addEventListener("pagehide", handleBeforeUnloadOrHide);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden" && pendingWritesRef.current.size > 0) {
+        flushVaultWrites(true);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnloadOrHide);
+      window.removeEventListener("pagehide", handleBeforeUnloadOrHide);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [vaultHandle]);
+
   const saveTimeoutRef = React.useRef<any>(null);
- const pendingWritesRef = React.useRef<Map<string, { note: Note; oldTitle: string | null; oldPath: string | undefined }>>(new Map());
-// id файлов, которые всё ещё физически лежат на диске под старым именем/путём,
-// но уже запланированы к удалению после debounce — sync должен их игнорировать
-const pendingDeletionsRef = React.useRef<Set<string>>(new Set());
-// Мьютекс: пока идёт запись на диск, новый вызов flushVaultWrites не стартует
-// параллельно, а лишь просит повторить прогон после завершения текущего
-const isFlushingRef = React.useRef(false);
-const flushQueuedRef = React.useRef(false);
+  const pendingWritesRef = React.useRef<Map<string, { note: Note; oldTitle: string | null; oldPath: string | undefined }>>(new Map());
+  // id файлов, которые всё ещё физически лежат на диске под старым именем/путём,
+  // но уже запланированы к удалению после debounce — sync должен их игнорировать
+  const pendingDeletionsRef = React.useRef<Set<string>>(new Set());
+  // Мьютекс: пока идёт запись на диск, новый вызов flushVaultWrites не стартует
+  // параллельно, а лишь просит повторить прогон после завершения текущего
+  const isFlushingRef = React.useRef(false);
+  const flushQueuedRef = React.useRef(false);
 
-const flushVaultWrites = async () => {
-  if (!vaultHandle) return;
+  const isSavingIndicatorActiveRef = React.useRef(false);
+  const showSavingIndicatorTimeoutRef = React.useRef<any>(null);
+  const hideSavingIndicatorTimeoutRef = React.useRef<any>(null);
 
-  if (isFlushingRef.current) {
-    flushQueuedRef.current = true;
-    return;
-  }
-
-  isFlushingRef.current = true;
-  setIsVaultSaving(true);
-
-  try {
-    const writes = Array.from(pendingWritesRef.current.entries()) as Array<[string, { note: Note; oldTitle: string | null; oldPath: string | undefined }]>;
-
-    for (const [id, data] of writes) {
-      const { note, oldTitle, oldPath } = data;
-      try {
-        if (oldTitle && oldTitle !== note.title.trim()) {
-          const oldFilename = `${oldTitle}.md`;
-          const oldId = (oldPath ? oldPath + "/" : "") + oldFilename;
-          try {
-            const oldDirHandle = await getDirHandleByPath(vaultHandle, oldPath);
-            await oldDirHandle.removeEntry(oldFilename);
-          } catch (e) {
-            console.error("Could not remove old file during rename", e);
-          } finally {
-            pendingDeletionsRef.current.delete(oldId);
-          }
-        }
-
-        const dirHandle = await getDirHandleByPath(vaultHandle, note.path);
-        const filename = `${note.title.trim()}.md`;
-        const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
-        const writable = await fileHandle.createWritable();
-        await writable.write(note.content);
-        await writable.close();
-
-        if (pendingWritesRef.current.get(id) === data) {
-          pendingWritesRef.current.delete(id);
-        }
-      } catch (err) {
-        console.error("Failed to save to vault", err);
+  const setVaultSavingIndicator = (active: boolean) => {
+    if (active) {
+      if (hideSavingIndicatorTimeoutRef.current) {
+        clearTimeout(hideSavingIndicatorTimeoutRef.current);
+        hideSavingIndicatorTimeoutRef.current = null;
+      }
+      if (!isSavingIndicatorActiveRef.current && !showSavingIndicatorTimeoutRef.current) {
+        showSavingIndicatorTimeoutRef.current = setTimeout(() => {
+          setIsVaultSaving(true);
+          isSavingIndicatorActiveRef.current = true;
+          showSavingIndicatorTimeoutRef.current = null;
+        }, 300);
+      }
+    } else {
+      if (showSavingIndicatorTimeoutRef.current) {
+        clearTimeout(showSavingIndicatorTimeoutRef.current);
+        showSavingIndicatorTimeoutRef.current = null;
+      }
+      if (isSavingIndicatorActiveRef.current && !hideSavingIndicatorTimeoutRef.current) {
+        hideSavingIndicatorTimeoutRef.current = setTimeout(() => {
+          setIsVaultSaving(false);
+          isSavingIndicatorActiveRef.current = false;
+          hideSavingIndicatorTimeoutRef.current = null;
+        }, 800);
       }
     }
-  } finally {
-    isFlushingRef.current = false;
-    setIsVaultSaving(false);
+  };
 
-    if (flushQueuedRef.current) {
-      flushQueuedRef.current = false;
-      flushVaultWrites();
+  const flushVaultWrites = async (immediate = false) => {
+    if (!vaultHandle) return;
+
+    if (isFlushingRef.current) {
+      flushQueuedRef.current = true;
+      return;
     }
-  }
-};
+
+    isFlushingRef.current = true;
+    setVaultSavingIndicator(true);
+
+    try {
+      const writes = Array.from(pendingWritesRef.current.entries()) as Array<[string, { note: Note; oldTitle: string | null; oldPath: string | undefined }]>;
+
+      if (immediate) {
+        // В быстром/немедленном режиме пишем параллельно все накопившиеся файлы без задержек
+        await Promise.all(writes.map(async ([id, data]) => {
+          const { note, oldTitle, oldPath } = data;
+          try {
+            if (oldTitle && oldTitle !== note.title.trim()) {
+              const oldFilename = `${oldTitle}.md`;
+              const oldId = (oldPath ? oldPath + "/" : "") + oldFilename;
+              try {
+                const oldDirHandle = await getDirHandleByPath(vaultHandle, oldPath);
+                await oldDirHandle.removeEntry(oldFilename);
+              } catch (e) {
+                console.error("Could not remove old file during rename", e);
+              } finally {
+                pendingDeletionsRef.current.delete(oldId);
+              }
+            }
+
+            const dirHandle = await getDirHandleByPath(vaultHandle, note.path);
+            const filename = `${note.title.trim()}.md`;
+            const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(note.content);
+            await writable.close();
+
+            if (pendingWritesRef.current.get(id) === data) {
+              pendingWritesRef.current.delete(id);
+            }
+          } catch (err) {
+            console.error("Failed to save to vault (immediate)", err);
+          }
+        }));
+      } else {
+        // В фоновом режиме пишем последовательно с паузами
+        for (const [id, data] of writes) {
+          // Даем браузеру время обработать ввод пользователя перед началом каждой операции записи
+          await new Promise(resolve => {
+            if (typeof requestIdleCallback !== 'undefined') {
+              requestIdleCallback(() => resolve(null));
+            } else {
+              setTimeout(resolve, 50);
+            }
+          });
+
+          const { note, oldTitle, oldPath } = data;
+          try {
+            if (oldTitle && oldTitle !== note.title.trim()) {
+              const oldFilename = `${oldTitle}.md`;
+              const oldId = (oldPath ? oldPath + "/" : "") + oldFilename;
+              try {
+                const oldDirHandle = await getDirHandleByPath(vaultHandle, oldPath);
+                await oldDirHandle.removeEntry(oldFilename);
+              } catch (e) {
+                console.error("Could not remove old file during rename", e);
+              } finally {
+                pendingDeletionsRef.current.delete(oldId);
+              }
+            }
+
+            const dirHandle = await getDirHandleByPath(vaultHandle, note.path);
+            const filename = `${note.title.trim()}.md`;
+            const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+            const writable = await fileHandle.createWritable();
+            
+            await writable.write(note.content);
+            
+            // Пауза перед закрытием дескриптора (самое медленное место в Chrome при работе с сетевыми папками)
+            await new Promise(resolve => setTimeout(resolve, 50));
+            await writable.close();
+
+            if (pendingWritesRef.current.get(id) === data) {
+              pendingWritesRef.current.delete(id);
+            }
+            
+            // Небольшой кулдаун между файлами в очереди, чтобы сетевой диск успел разгрузиться
+            await new Promise(resolve => setTimeout(resolve, 300));
+          } catch (err) {
+            console.error("Failed to save to vault", err);
+          }
+        }
+      }
+    } finally {
+      isFlushingRef.current = false;
+      setVaultSavingIndicator(false);
+
+      if (flushQueuedRef.current) {
+        flushQueuedRef.current = false;
+        flushVaultWrites(immediate);
+      }
+    }
+  };
 
   const getDirHandleByPath = async (rootHandle: any, pathStr: string | undefined) => {
     if (!pathStr) return rootHandle;
@@ -595,6 +702,11 @@ const flushVaultWrites = async () => {
 
   // Select note
   const handleSelectNote = (id: string, options?: { startReading?: boolean }) => {
+    if (pendingWritesRef.current.size > 0) {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      flushVaultWrites(true);
+    }
+
     setCurrentNoteId(id);
     setOpenNoteIds(prev => prev.includes(id) ? prev : [...prev, id]);
     if (appMode === "graph") setAppMode("split");
@@ -645,7 +757,7 @@ const flushVaultWrites = async () => {
 
     // 3. Записываем на физический диск
     if (vaultHandle) {
-      setIsVaultSaving(true); // <--- ВКЛЮЧАЕМ
+      setVaultSavingIndicator(true);
       try {
         const fileHandle = await vaultHandle.getFileHandle(filename, { create: true });
         const writable = await fileHandle.createWritable();
@@ -654,7 +766,7 @@ const flushVaultWrites = async () => {
       } catch (err) {
         console.error("Failed to create file in vault", err);
       } finally {
-        setIsVaultSaving(false); // <--- ВЫКЛЮЧАЕМ
+        setVaultSavingIndicator(false);
       }
     }
   };
@@ -692,14 +804,14 @@ const flushVaultWrites = async () => {
       
       // 3. Физически удаляем с диска
       if (vaultHandle && noteToDelete) {
-        setIsVaultSaving(true); // <--- ВКЛЮЧАЕМ
+        setVaultSavingIndicator(true);
         try {
           const dirHandle = await getDirHandleByPath(vaultHandle, noteToDelete.path);
           await dirHandle.removeEntry(`${noteToDelete.title.trim()}.md`);
         } catch (err) {
           console.error("Failed to delete from vault", err);
         } finally {
-          setIsVaultSaving(false); // <--- ВЫКЛЮЧАЕМ
+          setVaultSavingIndicator(false);
         }
       }
     }
@@ -711,6 +823,11 @@ const flushVaultWrites = async () => {
     setOpenNoteIds(newTabs);
     if (currentNoteId === id) {
       setCurrentNoteId(newTabs.length > 0 ? newTabs[newTabs.length - 1] : (notes.length > 0 ? notes[0].id : ""));
+    }
+
+    if (pendingWritesRef.current.size > 0) {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      flushVaultWrites(true);
     }
   };
 
@@ -771,7 +888,11 @@ const flushVaultWrites = async () => {
       }
 
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = setTimeout(flushVaultWrites, 1000);
+      if (pending.filenameChanged) {
+        flushVaultWrites(true);
+      } else {
+        saveTimeoutRef.current = setTimeout(flushVaultWrites, 10000);
+      }
     }
     
     setPendingRename(null);
