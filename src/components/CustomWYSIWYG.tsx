@@ -154,7 +154,7 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
         }
         // Escape the resolved content for safe HTML display
         const safeContent = childContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        const previewLines = safeContent.split('\n').slice(0, 6).join('<br/>');
+        const previewLines = safeContent.split('\n').join('<br/>');
         const safeTarget = cleanTarget.replace(/"/g, '&quot;');
         return `<span class="md-line${zenClass}"><span class="md-embed text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-900/20 px-1 rounded border border-indigo-200/50 dark:border-indigo-800/30 cursor-pointer" data-note="${safeTarget}"><span class="md-token">![[</span>${cleanTarget}<span class="md-token">]]</span></span><br/><span contenteditable="false" class="md-embed-preview-block block border-l-4 border-indigo-500 pl-3 py-1.5 pr-2 mt-1.5 mb-0.5 bg-slate-50/80 dark:bg-zinc-900/80 rounded-r shadow-sm text-sm text-slate-700 dark:text-zinc-300 select-none cursor-pointer" data-note="${safeTarget}">${previewLines}</span></span>`;
       }
