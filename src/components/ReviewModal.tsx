@@ -228,7 +228,7 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
                       );
                     })}
                   </div>
-                ) : (card.type === "cloze" || card.type === "type-in") ? (
+                ) : card.type === "type-in" ? (
                   showAnswer && (
                     <>
                       <hr className="my-8 border-slate-200 dark:border-zinc-800 w-1/2 mx-auto" />
@@ -237,7 +237,7 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
                       </div>
                     </>
                   )
-                ) : (
+                ) : card.type === "cloze" ? null : (
                   showAnswer && (
                     <>
                       <hr className="my-8 border-slate-200 dark:border-zinc-800 w-1/2 mx-auto" />
