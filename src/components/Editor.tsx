@@ -36,6 +36,7 @@ import {
   List,
   CheckCircle2,
   Scissors,
+  ArrowLeft,
 } from "lucide-react";
 
 interface EditorProps {
@@ -194,14 +195,8 @@ export default function Editor({
   const [showCardDropdown, setShowCardDropdown] = useState(false);
   const [scheduledMessage, setScheduledMessage] = useState<string | null>(null);
   const [showEarlyReview, setShowEarlyReview] = useState(false);
-  const [extractModal, setExtractModal] = useState<{
-    open: boolean;
-    customTitle: string;
-    textToExtract: string;
-    start?: number;
-    end?: number;
-    nearestHeading: string | null;
-  } | null>(null);
+  const [showExtractDropdown, setShowExtractDropdown] = useState(false);
+  const [selectionPopupMode, setSelectionPopupMode] = useState<"actions" | "extract-types">("actions");
 
   // Reset scheduled message and early review state when note changes
   useEffect(() => {
@@ -296,7 +291,25 @@ export default function Editor({
     setScheduledMessage(`Scheduled for ${nextReadStr} (+${newInterval}d)`);
   };
 
-  const handleExtractSelection = async (contextData?: { text: string, start?: number, end?: number }) => {
+  const handleExtractButtonClick = () => {
+    // Check if there is any selection
+    let textToExtract = selectedText || "";
+    if (!textToExtract && (mode === "edit" || mode === "split") && textareaRef.current) {
+      const tx = textareaRef.current;
+      textToExtract = tx.value.substring(tx.selectionStart, tx.selectionEnd);
+    } else if (!textToExtract && mode === "dynamic" && wysiwygRef.current) {
+      textToExtract = window.getSelection()?.toString() || "";
+    }
+
+    if (!textToExtract || !textToExtract.trim()) {
+      alert("Пожалуйста, выделите текст в заметке, чтобы создать из него экстракт!");
+      return;
+    }
+
+    setShowExtractDropdown(!showExtractDropdown);
+  };
+
+  const handleExtractExecute = async (insertType: "embed" | "link" | "block", contextData?: { text: string, start?: number, end?: number }) => {
     let textToExtract = "";
     let start: number | undefined = contextData?.start;
     let end: number | undefined = contextData?.end;
@@ -356,21 +369,6 @@ export default function Editor({
       }
     }
     
-    setExtractModal({
-      open: true,
-      customTitle,
-      textToExtract,
-      start,
-      end,
-      nearestHeading
-    });
-  };
-
-  const handleExtractModalChoice = async (insertType: "embed" | "link" | "block") => {
-    if (!extractModal || !onExtractNote) return;
-    const { customTitle, textToExtract, start, end, nearestHeading } = extractModal;
-    setExtractModal(null);
-    
     const options = {
       customTitle,
       insertType,
@@ -383,6 +381,7 @@ export default function Editor({
     window.getSelection()?.removeAllRanges();
     setSelectionCoords(null);
     setSelectedText("");
+    setSelectionPopupMode("actions");
   };
 
   const lastOffsetRef = useRef(0);
@@ -773,6 +772,7 @@ export default function Editor({
     if (!text) {
       setSelectionCoords(null);
       setSelectedText("");
+      setSelectionPopupMode("actions");
       return;
     }
 
@@ -785,6 +785,7 @@ export default function Editor({
         left: rect.left + rect.width / 2
       });
       setSelectedText(text);
+      setSelectionPopupMode("actions");
     } catch (err) {
       console.error(err);
     }
@@ -793,6 +794,7 @@ export default function Editor({
   const handlePreviewMouseDown = () => {
     setSelectionCoords(null);
     setSelectedText("");
+    setSelectionPopupMode("actions");
   };
 
   const handleCreateCardFromSelection = () => {
@@ -804,6 +806,7 @@ export default function Editor({
     window.getSelection()?.removeAllRanges();
     setSelectionCoords(null);
     setSelectedText("");
+    setSelectionPopupMode("actions");
   };
 
   return (
@@ -996,14 +999,68 @@ export default function Editor({
           <div className="h-4 w-px bg-slate-200 dark:bg-zinc-700 mx-2 shrink-0" />
           
            {/* Кнопка создания Экстракта */}
-            <button
-              onClick={() => handleExtractSelection()}
-              className="p-1.5 hover:bg-white dark:hover:bg-zinc-700 rounded text-amber-600 dark:text-amber-400 transition-all cursor-pointer flex items-center space-x-1 text-xs font-bold"
-              title="Создать экстракт из выделенного текста (Incremental Reading)"
-            >
-              <Scissors className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Extract note</span>
-            </button>
+           {/* Кнопка создания Экстракта с выпадающим списком */}
+           <div className="relative">
+             <button
+               onClick={handleExtractButtonClick}
+               className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded text-amber-600 dark:text-amber-400 transition-colors cursor-pointer flex items-center space-x-1 text-xs font-bold"
+               title="Создать экстракт из выделенного текста (Incremental Reading)"
+             >
+               <Scissors className="w-3.5 h-3.5" />
+               <span className="hidden md:inline">Extract note</span>
+               <ChevronDown className="w-3 h-3 text-amber-500/70" />
+             </button>
+             
+             {showExtractDropdown && (
+               <>
+                 <div 
+                   className="fixed inset-0 z-10" 
+                   onClick={() => setShowExtractDropdown(false)} 
+                 />
+                 <div className="absolute right-0 mt-1 w-64 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg shadow-xl py-1.5 z-20 flex flex-col gap-0.5 animate-in fade-in duration-100">
+                   <button
+                     onClick={() => {
+                       handleExtractExecute("embed");
+                       setShowExtractDropdown(false);
+                     }}
+                     className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 font-semibold flex items-center gap-2 cursor-pointer transition-colors"
+                   >
+                     <span className="text-sm shrink-0">📦</span>
+                     <div className="flex flex-col">
+                       <span>Embed (![[Note]])</span>
+                       <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">Заменить текст встроенной ссылкой</span>
+                     </div>
+                   </button>
+                   <button
+                     onClick={() => {
+                       handleExtractExecute("link");
+                       setShowExtractDropdown(false);
+                     }}
+                     className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 font-semibold flex items-center gap-2 cursor-pointer transition-colors"
+                   >
+                     <span className="text-sm shrink-0">🔗</span>
+                     <div className="flex flex-col">
+                       <span>Link ([[Note]])</span>
+                       <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">Заменить текст обычной ссылкой</span>
+                     </div>
+                   </button>
+                   <button
+                     onClick={() => {
+                       handleExtractExecute("block");
+                       setShowExtractDropdown(false);
+                     }}
+                     className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 font-semibold flex items-center gap-2 cursor-pointer transition-colors"
+                   >
+                     <span className="text-sm shrink-0">🧩</span>
+                     <div className="flex flex-col">
+                       <span>Block Transclusion</span>
+                       <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-normal">Оставить текст и встроить блок</span>
+                     </div>
+                   </button>
+                 </div>
+               </>
+             )}
+           </div>
            
             
           
@@ -1273,21 +1330,57 @@ export default function Editor({
           onMouseDown={(e) => e.stopPropagation()}
         >
           <div className="flex gap-1 bg-indigo-600 border border-indigo-500 rounded-lg shadow-lg overflow-hidden p-1">
-            <button
-              onClick={handleCreateCardFromSelection}
-              className="flex items-center gap-1.5 px-2.5 py-1 hover:bg-indigo-700 text-white font-medium text-xs rounded cursor-pointer transition-colors"
-            >
-              <Brain className="w-3.5 h-3.5" />
-              <span>Сделать карточкой</span>
-            </button>
-            <div className="w-px h-4 bg-indigo-500/50 self-center" />
-            <button
-              onClick={() => handleExtractSelection()}
-              className="flex items-center gap-1.5 px-2.5 py-1 hover:bg-indigo-700 text-white font-medium text-xs rounded cursor-pointer transition-colors"
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              <span>Экстракт</span>
-            </button>
+            {selectionPopupMode === "actions" ? (
+              <>
+                <button
+                  onClick={handleCreateCardFromSelection}
+                  className="flex items-center gap-1.5 px-2.5 py-1 hover:bg-indigo-700 text-white font-medium text-xs rounded cursor-pointer transition-colors"
+                >
+                  <Brain className="w-3.5 h-3.5" />
+                  <span>Сделать карточкой</span>
+                </button>
+                <div className="w-px h-4 bg-indigo-500/50 self-center" />
+                <button
+                  onClick={() => setSelectionPopupMode("extract-types")}
+                  className="flex items-center gap-1.5 px-2.5 py-1 hover:bg-indigo-700 text-white font-medium text-xs rounded cursor-pointer transition-colors"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>Экстракт</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setSelectionPopupMode("actions")}
+                  className="flex items-center justify-center p-1 hover:bg-indigo-700 text-white rounded cursor-pointer transition-colors"
+                  title="Назад"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                </button>
+                <div className="w-px h-4 bg-indigo-500/50 self-center" />
+                <button
+                  onClick={() => handleExtractExecute("embed")}
+                  className="flex items-center gap-1 px-2 py-1 hover:bg-indigo-700 text-white font-medium text-xs rounded cursor-pointer transition-colors"
+                  title="Embed (![[Note]])"
+                >
+                  <span>📦 Embed</span>
+                </button>
+                <button
+                  onClick={() => handleExtractExecute("link")}
+                  className="flex items-center gap-1 px-2 py-1 hover:bg-indigo-700 text-white font-medium text-xs rounded cursor-pointer transition-colors"
+                  title="Link ([[Note]])"
+                >
+                  <span>🔗 Link</span>
+                </button>
+                <button
+                  onClick={() => handleExtractExecute("block")}
+                  className="flex items-center gap-1 px-2 py-1 hover:bg-indigo-700 text-white font-medium text-xs rounded cursor-pointer transition-colors"
+                  title="Block Transclusion"
+                >
+                  <span>🧩 Block</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1361,58 +1454,7 @@ export default function Editor({
         </div>
       )}
 
-      {/* Extract Type Selection Modal */}
-      {extractModal?.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setExtractModal(null)}>
-          <div
-            className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl border border-slate-200 dark:border-zinc-700 p-6 w-[380px] max-w-[90vw] space-y-4 animate-in fade-in zoom-in-95"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="text-center">
-              <h3 className="text-lg font-bold text-slate-800 dark:text-zinc-100 mb-1">Extract Note</h3>
-              <p className="text-xs text-slate-500 dark:text-zinc-400">Select how to insert the link in the source note</p>
-            </div>
-            <div className="space-y-2">
-              <button
-                onClick={() => handleExtractModalChoice("embed")}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/50 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 hover:border-indigo-300 dark:hover:border-indigo-700 transition-all group cursor-pointer"
-              >
-                <span className="text-xl shrink-0">📦</span>
-                <div className="text-left">
-                  <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">Embed</div>
-                  <div className="text-[11px] text-slate-400 dark:text-zinc-500">Replace text with <code className="font-mono text-indigo-500">{"![[Note]]"}</code></div>
-                </div>
-              </button>
-              <button
-                onClick={() => handleExtractModalChoice("link")}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/50 hover:bg-violet-50 dark:hover:bg-violet-950/30 hover:border-violet-300 dark:hover:border-violet-700 transition-all group cursor-pointer"
-              >
-                <span className="text-xl shrink-0">🔗</span>
-                <div className="text-left">
-                  <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 group-hover:text-violet-600 dark:group-hover:text-violet-400">Link</div>
-                  <div className="text-[11px] text-slate-400 dark:text-zinc-500">Replace text with <code className="font-mono text-violet-500">{"[[Note]]"}</code></div>
-                </div>
-              </button>
-              <button
-                onClick={() => handleExtractModalChoice("block")}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/50 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 dark:hover:border-emerald-700 transition-all group cursor-pointer"
-              >
-                <span className="text-xl shrink-0">🧩</span>
-                <div className="text-left">
-                  <div className="text-sm font-semibold text-slate-700 dark:text-zinc-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400">Block Transclusion</div>
-                  <div className="text-[11px] text-slate-400 dark:text-zinc-500">Keep text, add <code className="font-mono text-emerald-500">^block-id</code>, embed in new note</div>
-                </div>
-              </button>
-            </div>
-            <button
-              onClick={() => setExtractModal(null)}
-              className="w-full text-center text-xs text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 py-1 cursor-pointer transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }
