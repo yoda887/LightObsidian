@@ -70,41 +70,6 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
     });
   };
 
-  // Renders a cloze sentence with each blank shown as a highlighted, fixed-width
-  // pill. Before the answer is revealed the pill shows a masked placeholder;
-  // once revealed it cross-fades into the actual word (no layout shift).
-  const renderCloze = (answerText: string, revealed: boolean) => {
-    const parts = answerText.split(/\*\*(.*?)\*\*/g);
-    return parts.map((part, i) => {
-      if (i % 2 === 1) {
-        const maskLength = Math.min(Math.max(part.length, 3), 10);
-        return (
-          <span
-            key={i}
-            className="relative inline-block mx-1 align-middle h-7"
-            style={{ minWidth: `${maskLength * 0.62 + 1.6}rem` }}
-          >
-            <span
-              className={`absolute inset-0 flex items-center justify-center px-2 rounded border-b-2 font-bold bg-amber-50 dark:bg-amber-900/30 border-amber-500 text-amber-400/70 dark:text-amber-500/60 tracking-widest transition-all duration-300 ease-out ${
-                revealed ? "opacity-0 scale-75" : "opacity-100 scale-100"
-              }`}
-            >
-              {"_".repeat(maskLength)}
-            </span>
-            <span
-              className={`absolute inset-0 flex items-center justify-center px-2 rounded border-b-2 font-bold bg-amber-50 dark:bg-amber-900/30 border-amber-500 text-amber-600 dark:text-amber-400 transition-all duration-300 ease-out delay-150 ${
-                revealed ? "opacity-100 scale-100" : "opacity-0 scale-75"
-              }`}
-            >
-              {part}
-            </span>
-          </span>
-        );
-      }
-      return <span key={i}>{part}</span>;
-    });
-  };
-
   const renderTypeInQuestion = () => {
     if (!card || !card.answers) return "";
     
@@ -217,8 +182,8 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
                 <div className="text-lg md:text-xl font-medium text-slate-800 dark:text-zinc-100 text-center leading-relaxed whitespace-pre-wrap">
                   {card.type === "type-in"
                     ? renderTypeInQuestion()
-                    : card.type === "cloze"
-                    ? renderCloze(card.answer, showAnswer)
+                    : card.type === "cloze" && showAnswer
+                    ? renderClozeAnswer(card.answer)
                     : card.question}
                 </div>
 
