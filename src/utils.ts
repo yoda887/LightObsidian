@@ -161,6 +161,11 @@ export async function parseMarkdownToHtml(content: string, notes: Note[] = [], d
   parsed = parsed.replace(/<p>([\s\S]+?)<\/p>\s*<p>\?<\/p>\s*<p>([\s\S]+?)<\/p>/g, (match, q, a) => renderMultiline(q, a));
   parsed = parsed.replace(/<p>([\s\S]+?)<br>\?<br>([\s\S]+?)<\/p>/g, (match, q, a) => renderMultiline(q, a));
 
+  // Replace Type-In Deletions ({{type:cloze}})
+  parsed = parsed.replace(/\{\{type:(.*?)\}\}/g, (match, text) => {
+    return `<span class="group relative inline-flex min-w-[2rem] bg-indigo-100 dark:bg-indigo-900/40 px-1.5 rounded-sm border-b-2 border-indigo-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-indigo-800 dark:text-indigo-300 whitespace-pre-wrap">✏️ ${text}</span><span class="absolute inset-0 flex items-center justify-center text-indigo-600 dark:text-indigo-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">✏️ ...</span></span>`;
+  });
+
   // Replace Cloze Deletions ({{cloze}} and ==cloze==)
   parsed = parsed.replace(/\{\{(.*?)\}\}|==(.*?)==/g, (match, cloze1, cloze2) => {
     const text = cloze1 || cloze2;

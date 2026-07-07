@@ -168,6 +168,9 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
     // Tags
     processed = processed.replace(/(?<=^|\s)(#[\p{L}\p{N}_\-\/]+)/gu, '<span class="text-indigo-500 dark:text-indigo-400 font-medium cursor-pointer hover:underline">$1</span>');
 
+    // Type-In Deletions
+    processed = processed.replace(/\{\{type:(.*?)\}\}/g, '<span class="text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1 rounded border-b-2 border-indigo-500"><span class="md-token opacity-50">{{type:</span>$1<span class="md-token opacity-50">}}</span></span>');
+
     // Cloze Deletions
     processed = processed.replace(/\{\{(.*?)\}\}/g, '<span class="text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1 rounded border-b-2 border-amber-500"><span class="md-token opacity-50">{{</span>$1<span class="md-token opacity-50">}}</span></span>');
 

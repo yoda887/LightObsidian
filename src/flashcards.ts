@@ -9,8 +9,9 @@ export interface Flashcard {
   nextReview: number;     // Timestamp
   interval: number;       // In days
   ease: number;           // Multiplier
-  type?: "standard" | "cloze" | "mcq" | "reversed" | "multiline";
+  type?: "standard" | "cloze" | "mcq" | "reversed" | "multiline" | "type-in";
   options?: string[];
+  answers?: string[];
   isReverseDirection?: boolean;
 }
 
@@ -433,13 +434,14 @@ export function extractFlashcards(notes: Note[]): Flashcard[] {
       }
     }
 
-    // 4. Extract cloze deletions line-by-line from cleanContent
+    // 4. Extract cloze and type-in deletions line-by-line from cleanContent
     const lines = cleanContent.substring(fmLength).split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (line.includes("::") || line === "?") continue;
 
-      const hasCloze = /\{\{[^{}]+\}\}|==[^=]+==/.test(line);
+      const hasTypeIn = /\{\{type:([^{}]+)\}\}/.test(line);
+      const hasCloze = hasTypeIn || /\{\{[^{}]+\}\}|==[^=]+==/.test(line);
       if (!hasCloze) continue;
 
       let nextReview = 0;
@@ -457,21 +459,60 @@ export function extractFlashcards(notes: Note[]): Flashcard[] {
         }
       }
 
-      const question = line.replace(/\{\{[^{}]+\}\}|==[^=]+==/g, "[...]");
-      const answer = line.replace(/\{\{([^{}]+)\}\}/g, "**$1**").replace(/==([^=]+)==/g, "**$1**");
       const fullMatch = srLine ? `${line}\n${srLine}` : line;
 
-      cards.push({
-        noteId: note.id,
-        noteTitle: note.title,
-        question,
-        answer,
-        fullMatch,
-        nextReview,
-        interval,
-        ease,
-        type: "cloze"
-      });
+      if (hasTypeIn) {
+        // Extract type-in inputs and construct the answers list
+        const answers: string[] = [];
+        let tempQuestion = line;
+        
+        // Find all {{type:...}} to replace them one by one
+        let match;
+        const typeInRegex = /\{\{type:([^{}]+)\}\}/g;
+        let index = 0;
+        while ((match = typeInRegex.exec(line)) !== null) {
+          answers.push(match[1].trim());
+          tempQuestion = tempQuestion.replace(match[0], `[__input_${index}__]`);
+          index++;
+        }
+        
+        // Replace remaining regular clozes in question with [...] if any
+        tempQuestion = tempQuestion.replace(/\{\{([^{}]+)\}\}/g, "[...]").replace(/==([^=]+)==/g, "[...]");
+        
+        // Construct the answer string with bold text
+        const answer = line
+          .replace(/\{\{type:([^{}]+)\}\}/g, "**$1**")
+          .replace(/\{\{([^{}]+)\}\}/g, "**$1**")
+          .replace(/==([^=]+)==/g, "**$1**");
+
+        cards.push({
+          noteId: note.id,
+          noteTitle: note.title,
+          question: tempQuestion,
+          answer,
+          answers,
+          fullMatch,
+          nextReview,
+          interval,
+          ease,
+          type: "type-in"
+        });
+      } else {
+        const question = line.replace(/\{\{[^{}]+\}\}|==[^=]+==/g, "[...]");
+        const answer = line.replace(/\{\{([^{}]+)\}\}/g, "**$1**").replace(/==([^=]+)==/g, "**$1**");
+
+        cards.push({
+          noteId: note.id,
+          noteTitle: note.title,
+          question,
+          answer,
+          fullMatch,
+          nextReview,
+          interval,
+          ease,
+          type: "cloze"
+        });
+      }
     }
   }
   

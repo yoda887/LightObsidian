@@ -15,6 +15,7 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [typeInInputs, setTypeInInputs] = useState<string[]>([]);
 
   // Reset state and snapshot due cards when modal opens
   useEffect(() => {
@@ -23,10 +24,19 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
       setCurrentIndex(0);
       setShowAnswer(false);
       setSelectedOption(null);
+      setTypeInInputs([]);
     } else {
       setSessionCards([]);
     }
   }, [isOpen]);
+
+  const card = sessionCards[currentIndex];
+
+  useEffect(() => {
+    if (card) {
+      setTypeInInputs(card.answers ? new Array(card.answers.length).fill("") : []);
+    }
+  }, [currentIndex, card]);
 
   if (!isOpen) return null;
 
@@ -44,7 +54,6 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
     }
   };
 
-  const card = sessionCards[currentIndex];
   const isFinished = sessionCards.length === 0 || currentIndex >= sessionCards.length;
 
   const renderClozeAnswer = (answerText: string) => {
@@ -54,6 +63,55 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
         return (
           <span key={i} className="text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1 rounded border-b-2 border-amber-500 font-bold mx-1">
             {part}
+          </span>
+        );
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
+  const renderTypeInQuestion = () => {
+    if (!card || !card.answers) return "";
+    
+    // We split card.question by [__input_N__]
+    // The structure is e.g. "Столица Франции - [__input_0__], а Германии - [__input_1__]."
+    const regex = /\[__input_(\d+)__\]/g;
+    const parts = card.question.split(regex);
+    
+    return parts.map((part, i) => {
+      // Every odd element is the index of the input
+      if (i % 2 === 1) {
+        const inputIdx = parseInt(part, 10);
+        const isCorrect = typeInInputs[inputIdx]?.trim().toLowerCase() === card.answers?.[inputIdx]?.trim().toLowerCase();
+        
+        let borderClass = "border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 focus:border-indigo-500 focus:ring-indigo-500";
+        if (showAnswer) {
+          if (isCorrect) {
+            borderClass = "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400";
+          } else {
+            borderClass = "border-red-500 bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400";
+          }
+        }
+
+        return (
+          <span key={i} className="inline-flex flex-col items-center mx-1 align-middle">
+            <input
+              type="text"
+              disabled={showAnswer}
+              value={typeInInputs[inputIdx] || ""}
+              onChange={(e) => {
+                const newInputs = [...typeInInputs];
+                newInputs[inputIdx] = e.target.value;
+                setTypeInInputs(newInputs);
+              }}
+              placeholder="..."
+              className={`px-2 py-0.5 rounded text-sm font-semibold border focus:outline-none transition-all duration-200 w-28 text-center ${borderClass}`}
+            />
+            {showAnswer && !isCorrect && (
+              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold mt-0.5">
+                (правильно: {card.answers?.[inputIdx]})
+              </span>
+            )}
           </span>
         );
       }
@@ -122,7 +180,11 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
               
               <div className="flex-1 flex flex-col justify-center">
                 <div className="text-lg md:text-xl font-medium text-slate-800 dark:text-zinc-100 text-center leading-relaxed whitespace-pre-wrap">
-                  {card.type === "cloze" && showAnswer ? renderClozeAnswer(card.answer) : card.question}
+                  {card.type === "type-in"
+                    ? renderTypeInQuestion()
+                    : card.type === "cloze" && showAnswer
+                    ? renderClozeAnswer(card.answer)
+                    : card.question}
                 </div>
 
                 {card.type === "mcq" ? (
@@ -166,7 +228,16 @@ export default function ReviewModal({ isOpen, onClose, dueCards, onReviewCard, o
                       );
                     })}
                   </div>
-                ) : card.type === "cloze" ? null : (
+                ) : (card.type === "cloze" || card.type === "type-in") ? (
+                  showAnswer && (
+                    <>
+                      <hr className="my-8 border-slate-200 dark:border-zinc-800 w-1/2 mx-auto" />
+                      <div className="text-base md:text-lg text-slate-600 dark:text-zinc-300 text-center leading-relaxed animate-in fade-in slide-in-from-bottom-4 duration-300 whitespace-pre-wrap">
+                        {renderClozeAnswer(card.answer)}
+                      </div>
+                    </>
+                  )
+                ) : (
                   showAnswer && (
                     <>
                       <hr className="my-8 border-slate-200 dark:border-zinc-800 w-1/2 mx-auto" />
