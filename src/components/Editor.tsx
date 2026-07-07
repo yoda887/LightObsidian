@@ -197,6 +197,7 @@ export default function Editor({
   const [showEarlyReview, setShowEarlyReview] = useState(false);
   const [showExtractDropdown, setShowExtractDropdown] = useState(false);
   const [selectionPopupMode, setSelectionPopupMode] = useState<"actions" | "extract-types">("actions");
+  const [pendingExtractData, setPendingExtractData] = useState<{ text: string; start?: number; end?: number } | null>(null);
 
   // Reset scheduled message and early review state when note changes
   useEffect(() => {
@@ -292,12 +293,31 @@ export default function Editor({
   };
 
   const handleExtractButtonClick = () => {
-    // Check if there is any selection
+    // If dropdown is already open, close it
+    if (showExtractDropdown) {
+      setShowExtractDropdown(false);
+      setPendingExtractData(null);
+      return;
+    }
+
+    // Capture selection data NOW before it's lost
     let textToExtract = selectedText || "";
+    let start: number | undefined;
+    let end: number | undefined;
+
     if (!textToExtract && (mode === "edit" || mode === "split") && textareaRef.current) {
       const tx = textareaRef.current;
-      textToExtract = tx.value.substring(tx.selectionStart, tx.selectionEnd);
-    } else if (!textToExtract && mode === "dynamic" && wysiwygRef.current) {
+      if (tx.selectionStart !== tx.selectionEnd) {
+        start = tx.selectionStart;
+        end = tx.selectionEnd;
+        textToExtract = tx.value.substring(start, end);
+      }
+    } else if (!textToExtract && (mode === "dynamic") && wysiwygRef.current) {
+      const range = wysiwygRef.current.getSelectionRange();
+      if (range) {
+        start = range.start;
+        end = range.end;
+      }
       textToExtract = window.getSelection()?.toString() || "";
     }
 
@@ -306,7 +326,9 @@ export default function Editor({
       return;
     }
 
-    setShowExtractDropdown(!showExtractDropdown);
+    // Store the captured selection for when user clicks a dropdown option
+    setPendingExtractData({ text: textToExtract, start, end });
+    setShowExtractDropdown(true);
   };
 
   const handleExtractExecute = async (insertType: "embed" | "link" | "block", contextData?: { text: string, start?: number, end?: number }) => {
@@ -1020,8 +1042,9 @@ export default function Editor({
                  <div className="absolute right-0 mt-1 w-64 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg shadow-xl py-1.5 z-20 flex flex-col gap-0.5 animate-in fade-in duration-100">
                    <button
                      onClick={() => {
-                       handleExtractExecute("embed");
+                       handleExtractExecute("embed", pendingExtractData ?? undefined);
                        setShowExtractDropdown(false);
+                       setPendingExtractData(null);
                      }}
                      className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 font-semibold flex items-center gap-2 cursor-pointer transition-colors"
                    >
@@ -1033,8 +1056,9 @@ export default function Editor({
                    </button>
                    <button
                      onClick={() => {
-                       handleExtractExecute("link");
+                       handleExtractExecute("link", pendingExtractData ?? undefined);
                        setShowExtractDropdown(false);
+                       setPendingExtractData(null);
                      }}
                      className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 font-semibold flex items-center gap-2 cursor-pointer transition-colors"
                    >
@@ -1046,8 +1070,9 @@ export default function Editor({
                    </button>
                    <button
                      onClick={() => {
-                       handleExtractExecute("block");
+                       handleExtractExecute("block", pendingExtractData ?? undefined);
                        setShowExtractDropdown(false);
+                       setPendingExtractData(null);
                      }}
                      className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 font-semibold flex items-center gap-2 cursor-pointer transition-colors"
                    >
@@ -1359,21 +1384,21 @@ export default function Editor({
                 </button>
                 <div className="w-px h-4 bg-indigo-500/50 self-center" />
                 <button
-                  onClick={() => handleExtractExecute("embed")}
+                  onClick={() => handleExtractExecute("embed", { text: selectedText })}
                   className="flex items-center gap-1 px-2 py-1 hover:bg-indigo-700 text-white font-medium text-xs rounded cursor-pointer transition-colors"
                   title="Embed (![[Note]])"
                 >
                   <span>📦 Embed</span>
                 </button>
                 <button
-                  onClick={() => handleExtractExecute("link")}
+                  onClick={() => handleExtractExecute("link", { text: selectedText })}
                   className="flex items-center gap-1 px-2 py-1 hover:bg-indigo-700 text-white font-medium text-xs rounded cursor-pointer transition-colors"
                   title="Link ([[Note]])"
                 >
                   <span>🔗 Link</span>
                 </button>
                 <button
-                  onClick={() => handleExtractExecute("block")}
+                  onClick={() => handleExtractExecute("block", { text: selectedText })}
                   className="flex items-center gap-1 px-2 py-1 hover:bg-indigo-700 text-white font-medium text-xs rounded cursor-pointer transition-colors"
                   title="Block Transclusion"
                 >
