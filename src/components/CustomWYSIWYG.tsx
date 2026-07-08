@@ -233,10 +233,27 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
 
   const prevIsZenMode = useRef(isZenMode);
 
+  // Helper: extract only editable text, skipping contenteditable="false" preview blocks
+  const getEditableText = (el: HTMLElement): string => {
+    let text = '';
+    for (const child of Array.from(el.childNodes)) {
+      if (child.nodeType === 3) {
+        text += child.textContent || '';
+      } else if (child.nodeType === 1) {
+        const htmlChild = child as HTMLElement;
+        if (htmlChild.getAttribute('contenteditable') === 'false') {
+          continue; // Skip non-editable preview blocks
+        }
+        text += getEditableText(htmlChild);
+      }
+    }
+    return text;
+  };
+
   // Initialize content
   useEffect(() => {
     if (editorRef.current) {
-      if (editorRef.current.textContent !== content || prevIsZenMode.current !== isZenMode) {
+      if (getEditableText(editorRef.current) !== content || prevIsZenMode.current !== isZenMode) {
         // Save caret if we are just toggling zen mode so we don't lose it
         const caret = prevIsZenMode.current !== isZenMode ? getCaretOffset() : null;
         
@@ -262,7 +279,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
       let end = 0;
       let selectedText = "";
       
-      const currentText = el.textContent || "";
+      const currentText = getEditableText(el);
       
       if (sel && sel.rangeCount > 0) {
         const range = sel.getRangeAt(0);
@@ -308,7 +325,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
     scrollToOffset: (offset: number) => {
       const el = editorRef.current;
       if (!el) return;
-      const textLen = el.textContent?.length || 0;
+      const textLen = getEditableText(el).length;
       if (textLen > 0) {
         const percentage = offset / textLen;
         el.scrollTop = (el.scrollHeight * percentage) - (el.clientHeight / 2);
@@ -321,7 +338,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
       const sel = window.getSelection();
       let start = 0;
       let end = 0;
-      const currentText = el.textContent || "";
+      const currentText = getEditableText(el);
       
       if (sel && sel.rangeCount > 0) {
         const range = sel.getRangeAt(0);
@@ -380,10 +397,31 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
     if (!sel || sel.rangeCount === 0) return 0;
     
     const range = sel.getRangeAt(0);
-    const preCaretRange = range.cloneRange();
-    preCaretRange.selectNodeContents(el);
-    preCaretRange.setEnd(range.endContainer, range.endOffset);
-    return preCaretRange.toString().length;
+    // Walk DOM manually to count only editable text before the caret
+    let offset = 0;
+    let found = false;
+    const walk = (node: Node): boolean => {
+      if (found) return true;
+      if (node.nodeType === 1) {
+        const htmlNode = node as HTMLElement;
+        if (htmlNode.getAttribute('contenteditable') === 'false') return false;
+      }
+      if (node.nodeType === 3) {
+        if (node === range.endContainer) {
+          offset += range.endOffset;
+          found = true;
+          return true;
+        }
+        offset += (node.textContent?.length || 0);
+      } else {
+        for (const child of Array.from(node.childNodes)) {
+          if (walk(child)) return true;
+        }
+      }
+      return false;
+    };
+    walk(el);
+    return offset;
   };
 
   const setCaretOffset = (offset: number) => {
@@ -401,6 +439,10 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
     let foundStart = false;
 
     while (!foundStart && (node = nodeStack.pop())) {
+      // Skip contenteditable="false" nodes
+      if (node.nodeType === 1 && (node as HTMLElement).getAttribute('contenteditable') === 'false') {
+        continue;
+      }
       if (node.nodeType === 3) {
         const nextCharIndex = charIndex + (node.textContent?.length || 0);
         if (!foundStart && offset >= charIndex && offset <= nextCharIndex) {
@@ -446,7 +488,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
     if (!editorRef.current) return;
 
     const caretOffset = getCaretOffset();
-    const newText = editorRef.current.textContent || "";
+    const newText = getEditableText(editorRef.current);
     
     if (newText !== previousContent.current) {
       previousContent.current = newText;
@@ -483,7 +525,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
   const updateActiveLine = (offset?: number) => {
     if (!isZenMode) return;
     const caretOffset = offset !== undefined ? offset : getCaretOffset();
-    const newText = editorRef.current?.textContent || "";
+    const newText = editorRef.current ? getEditableText(editorRef.current) : "";
     const textBeforeCaret = newText.substring(0, caretOffset);
     const lineIndex = textBeforeCaret.split('\n').length - 1;
     
@@ -510,7 +552,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     const caretOffset = getCaretOffset();
-    const currentText = editorRef.current?.textContent || "";
+    const currentText = editorRef.current ? getEditableText(editorRef.current) : "";
 
     // Intercept keys if autocomplete is active
     if (autocomplete.active) {
@@ -583,7 +625,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
       e.preventDefault();
       
       const caretOffset = getCaretOffset();
-      const currentText = editorRef.current?.textContent || "";
+      const currentText = editorRef.current ? getEditableText(editorRef.current) : "";
       
       // Manually splice \n into the text at caret position
       const newText = currentText.substring(0, caretOffset) + '\n' + currentText.substring(caretOffset);
@@ -602,7 +644,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
     } else if (e.key === 'Tab') {
       e.preventDefault();
       const caretOffset = getCaretOffset();
-      const currentText = editorRef.current?.textContent || "";
+      const currentText = editorRef.current ? getEditableText(editorRef.current) : "";
       const newText = currentText.substring(0, caretOffset) + '  ' + currentText.substring(caretOffset);
       
       previousContent.current = newText;
@@ -668,7 +710,7 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
             onMouseDown={(e) => {
               // Prevent losing focus from editor
               e.preventDefault();
-              const currentText = editorRef.current?.textContent || "";
+              const currentText = editorRef.current ? getEditableText(editorRef.current) : "";
               const caretOffset = getCaretOffset();
               const textBeforeCaret = currentText.substring(0, caretOffset);
               const match = textBeforeCaret.match(/\[\[([^\]]*)$/);
