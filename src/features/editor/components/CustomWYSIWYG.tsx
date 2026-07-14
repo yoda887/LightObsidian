@@ -1,6 +1,6 @@
-import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
-import { Note } from '../types';
-import { escapeRegExp } from '../utils';
+import React, { useRef, useEffect, forwardRef, useImperativeHandle, useState } from 'react';
+import { Note } from '../../../shared/types/types';
+import { MarkdownService } from '../../../core/markdown/MarkdownService';
 
 export interface CustomWYSIWYGRef {
   insertMarkdown: (before: string, after?: string) => void;
@@ -117,7 +117,7 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
             let foundParagraph = '';
             for (const p of paragraphs) {
               if (p.trim().includes(blockId)) {
-                foundParagraph = p.replace(new RegExp(`\\s*${escapeRegExp(blockId)}\\s*$`), '').trim();
+                foundParagraph = p.replace(new RegExp(`\\s*${MarkdownService.escapeRegExp(blockId)}\\s*$`), '').trim();
                 break;
               }
             }

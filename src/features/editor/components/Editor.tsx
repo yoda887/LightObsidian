@@ -4,12 +4,12 @@
  */
 
 import React, { useEffect, useState, useRef, useMemo } from "react";
-import { Note } from "../types";
-import { parseMarkdownToHtml, splitFrontmatter, parseYamlMetadata, updateYamlMetadata } from "../utils";
-import { insertFlashcardTemplate } from "../flashcards";
+import { Note } from "../../../shared/types/types";
 import { CustomWYSIWYG, CustomWYSIWYGRef } from "./CustomWYSIWYG";
 import TemplateModal from "./TemplateModal";
-import { AppSettings } from "./SettingsDialog";
+import { AppSettings } from "../../settings/components/SettingsDialog";
+import { MarkdownService } from "../../../core/markdown/MarkdownService";
+import { FlashcardService } from "../../../core/flashcards/FlashcardService";
 import {
   Heading1,
   Bold,
@@ -230,9 +230,9 @@ export default function Editor({
   };
 
   const irMetadata = useMemo(() => {
-    const { frontmatter } = splitFrontmatter(note.content);
+    const { frontmatter } = MarkdownService.splitFrontmatter(note.content);
     if (!frontmatter) return null;
-    const metadata = parseYamlMetadata(frontmatter);
+    const metadata = MarkdownService.parseYamlMetadata(frontmatter);
     if (metadata.ir_next_read) {
       const nextReadVal = String(metadata.ir_next_read).trim();
       const todayStr = new Date().toISOString().split("T")[0];
@@ -252,7 +252,7 @@ export default function Editor({
     if (!irMetadata) return;
     
     if (grade === "done") {
-      const newContent = updateYamlMetadata(note.content, {
+      const newContent = MarkdownService.updateYamlMetadata(note.content, {
         ir_next_read: null,
         ir_interval: null,
         ir_ease: null,
@@ -281,7 +281,7 @@ export default function Editor({
     nextDate.setDate(nextDate.getDate() + newInterval);
     const nextReadStr = nextDate.toISOString().split("T")[0];
     
-    const newContent = updateYamlMetadata(note.content, {
+    const newContent = MarkdownService.updateYamlMetadata(note.content, {
       ir_next_read: nextReadStr,
       ir_interval: newInterval,
       ir_ease: newEase,
@@ -590,7 +590,7 @@ export default function Editor({
   // Parse markdown asynchronously when note content changes
   useEffect(() => {
     let active = true;
-    parseMarkdownToHtml(note.content, notes).then(html => {
+    MarkdownService.parseMarkdownToHtml(note.content, notes).then(html => {
       if (active) {
         setHtmlContent(html);
       }
@@ -663,11 +663,11 @@ export default function Editor({
   };
 
   const handleInsertFlashcard = () => {
-    const updatedContent = insertFlashcardTemplate(note.content);
+    const updatedContent = FlashcardService.insertFlashcardTemplate(note.content);
     onUpdateNote(note.id, { content: updatedContent });
   };
 
-  const { frontmatter, body } = splitFrontmatter(note.content);
+  const { frontmatter, body } = MarkdownService.splitFrontmatter(note.content);
   const yamlInner = frontmatter
     ? frontmatter.replace(/^---\r?\n/, "").replace(/\r?\n---(?:\r?\n|$)/, "")
     : "";
@@ -1198,7 +1198,7 @@ export default function Editor({
             />
 
             {/* Note Metadata Block (Obsidian Properties Style) */}
-            {frontmatter && Object.keys(parseYamlMetadata(frontmatter)).length > 0 && (
+            {frontmatter && Object.keys(MarkdownService.parseYamlMetadata(frontmatter)).length > 0 && (
               <div className="metadata-properties mb-4 shrink-0">
                 <div
                   onClick={() => setIsYamlCollapsed(!isYamlCollapsed)}
@@ -1206,11 +1206,11 @@ export default function Editor({
                 >
                   <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isYamlCollapsed ? "" : "rotate-90"}`} />
                   <span>Properties</span>
-                  <span className="text-[9px] font-normal text-slate-300 dark:text-zinc-600 ml-1">({Object.keys(parseYamlMetadata(frontmatter)).length})</span>
+                  <span className="text-[9px] font-normal text-slate-300 dark:text-zinc-600 ml-1">({Object.keys(MarkdownService.parseYamlMetadata(frontmatter)).length})</span>
                 </div>
                 {!isYamlCollapsed && (
                 <div className="divide-y divide-slate-100/50 dark:divide-zinc-800/20 animate-in slide-in-from-top-1 fade-in duration-200">
-                  {Object.entries(parseYamlMetadata(frontmatter)).map(([key, val]) => {
+                  {Object.entries(MarkdownService.parseYamlMetadata(frontmatter)).map(([key, val]) => {
                     let IconComponent = Type;
                     if (key === "tags" || key === "tag") IconComponent = Tag;
                     else if (key === "aliases" || key === "alias" || Array.isArray(val)) IconComponent = List;

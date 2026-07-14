@@ -1,4 +1,4 @@
-import { Note } from "./types";
+import { Note } from "../../shared/types/types";
 
 export interface Flashcard {
   noteId: string;
@@ -551,8 +551,6 @@ export function calculateNextReview(ease: number, interval: number, grade: "hard
 }
 
 export function updateFlashcardInContent(content: string, card: Flashcard, grade: "hard" | "good" | "easy"): string {
-  // Re-extract cards from the CURRENT content to get the up-to-date representation of this card
-  // This prevents bugs where `card.fullMatch` becomes stale because another card was answered in the same session
   const dummyNote: Note = {
     id: card.noteId,
     title: card.noteTitle,
@@ -623,8 +621,128 @@ export function updateFlashcardInContent(content: string, card: Flashcard, grade
   }
 }
 
-// Appends a traditional inline card template to the note content
 export function insertFlashcardTemplate(content: string): string {
   const template = "\n\nQuestion :: Answer";
   return content + template;
 }
+
+export function extract(notes: Note[]): Flashcard[] {
+  return extractFlashcards(notes);
+}
+
+export function schedule(ease: number, interval: number, grade: "hard" | "good" | "easy"): { newInterval: number, newEase: number } {
+  return calculateNextReview(ease, interval, grade);
+}
+
+export function review(content: string, card: Flashcard, grade: "hard" | "good" | "easy"): string {
+  return updateFlashcardInContent(content, card, grade);
+}
+
+export interface HeatmapDay {
+  dateStr: string;
+  count: number;
+  dayOfWeek: number;
+}
+
+export interface FlashcardStats {
+  totalCards: number;
+  newCards: number;
+  learningCards: number;
+  matureCards: number;
+  streak: number;
+  heatmapGrid: HeatmapDay[][];
+}
+
+export function statistics(notes: Note[], reviewLog: string[]): FlashcardStats {
+  const allCards = extractFlashcards(notes);
+  
+  let newCards = 0;
+  let learningCards = 0;
+  let matureCards = 0;
+
+  allCards.forEach(c => {
+    if (c.interval === 0) {
+      newCards++;
+    } else if (c.interval < 21) {
+      learningCards++;
+    } else {
+      matureCards++;
+    }
+  });
+
+  const datesSet = new Set(reviewLog || []);
+  const sortedDates = Array.from(datesSet).sort((a: any, b: any) => new Date(b).getTime() - new Date(a).getTime());
+  
+  let streak = 0;
+  if (sortedDates.length > 0) {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+    const latestReviewDate = sortedDates[0];
+    if (latestReviewDate === todayStr || latestReviewDate === yesterdayStr) {
+      let currentToCheck = new Date(latestReviewDate);
+      while (true) {
+        const checkStr = currentToCheck.toISOString().split("T")[0];
+        if (datesSet.has(checkStr)) {
+          streak++;
+          currentToCheck.setDate(currentToCheck.getDate() - 1);
+        } else {
+          break;
+        }
+      }
+    }
+  }
+
+  const heatmapGrid: HeatmapDay[][] = [];
+  const reviewCounts: Record<string, number> = {};
+  (reviewLog || []).forEach(date => {
+    reviewCounts[date] = (reviewCounts[date] || 0) + 1;
+  });
+
+  const today = new Date();
+  const currentDayOfWeek = today.getDay();
+  
+  const startDate = new Date(today);
+  startDate.setDate(today.getDate() - (11 * 7 + currentDayOfWeek));
+
+  for (let w = 0; w < 12; w++) {
+    const weekDays: HeatmapDay[] = [];
+    for (let d = 0; d < 7; d++) {
+      const currentDate = new Date(startDate);
+      currentDate.setDate(startDate.getDate() + w * 7 + d);
+      const dateStr = currentDate.toISOString().split("T")[0];
+      
+      weekDays.push({
+        dateStr,
+        count: reviewCounts[dateStr] || 0,
+        dayOfWeek: d
+      });
+    }
+    heatmapGrid.push(weekDays);
+  }
+
+  return {
+    totalCards: allCards.length,
+    newCards,
+    learningCards,
+    matureCards,
+    streak,
+    heatmapGrid
+  };
+}
+
+export const FlashcardService = {
+  extractYamlCards,
+  updateYamlCardsInContent,
+  extractFlashcards,
+  getDueCards,
+  calculateNextReview,
+  updateFlashcardInContent,
+  insertFlashcardTemplate,
+  extract,
+  schedule,
+  review,
+  statistics
+};

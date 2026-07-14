@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Note } from "./types";
+import { Note } from "../../shared/types/types";
 
 const DB_NAME = "LightObsidianReactDB";
 const STORE_NAME = "notes";

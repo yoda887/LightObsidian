@@ -4,7 +4,7 @@
  */
 
 import { useState } from "react";
-import { Note } from "../types";
+import { Note } from "../../../shared/types/types";
 //import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock } from "lucide-react";
 //import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock, AlertTriangle } from "lucide-react";
 import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock, AlertTriangle, Loader2, RefreshCw } from "lucide-react";

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Note } from '../types';
+import { Note } from '../../../shared/types/types';
 import { FileText, X } from 'lucide-react';
 
 interface TemplateModalProps {

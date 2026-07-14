@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
-import { Note } from "../types";
+import { Note } from "../../../shared/types/types";
 import { Link, Hash, X, Sparkles, RotateCcw, Check, FileText, Network, BarChart2, Award, BookOpen, Brain } from "lucide-react";
-import { Flashcard, extractFlashcards } from "../flashcards";
-import { splitFrontmatter, parseYamlMetadata, updateYamlMetadata } from "../utils";
+import { Flashcard, FlashcardService } from "../../../core/flashcards/FlashcardService";
+import { MarkdownService } from "../../../core/markdown/MarkdownService";
 
 interface RightSidebarProps {
   currentNote?: Note;
@@ -60,14 +60,9 @@ export default function RightSidebar({
       if (match[1].trim()) outLinks.add(match[1].trim());
     }
 
-    // Extract incoming links: other notes that contain [[currentNote.title]]
-    // Also support links by note id if someone typed that, but standard is title
+    // Extract incoming links (backlinks)
+    const inLinks = MarkdownService.backlinks(currentNote.id, currentNote.title, notes);
     const currentTitleLower = currentNote.title.toLowerCase();
-    const inLinks = notes.filter(n => {
-      if (n.id === currentNote.id) return false; // don't self-link here
-      const nLinks = Array.from(n.content.matchAll(/\[\[(.*?)\]\]/g)).map(m => m[1].trim().toLowerCase());
-      return nLinks.includes(currentTitleLower);
-    });
 
     // Extract unlinked mentions: other notes that contain currentNote.title as plain text,
     // and are NOT already in inLinks.
@@ -170,84 +165,7 @@ export default function RightSidebar({
   // STUDY STATS CALCULATIONS
   // ----------------------------------------------------
   const stats = useMemo(() => {
-    const allCards = extractFlashcards(notes);
-    
-    let newCards = 0;
-    let learningCards = 0;
-    let matureCards = 0;
-
-    allCards.forEach(c => {
-      if (c.interval === 0) {
-        newCards++;
-      } else if (c.interval < 21) {
-        learningCards++;
-      } else {
-        matureCards++;
-      }
-    });
-
-    const datesSet = new Set(reviewLog || []);
-    const sortedDates = Array.from(datesSet).sort((a: any, b: any) => new Date(b).getTime() - new Date(a).getTime());
-    
-    let streak = 0;
-    if (sortedDates.length > 0) {
-      const todayStr = new Date().toISOString().split("T")[0];
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split("T")[0];
-
-      const latestReviewDate = sortedDates[0];
-      if (latestReviewDate === todayStr || latestReviewDate === yesterdayStr) {
-        let currentToCheck = new Date(latestReviewDate);
-        while (true) {
-          const checkStr = currentToCheck.toISOString().split("T")[0];
-          if (datesSet.has(checkStr)) {
-            streak++;
-            currentToCheck.setDate(currentToCheck.getDate() - 1);
-          } else {
-            break;
-          }
-        }
-      }
-    }
-
-    const heatmapGrid: { dateStr: string; count: number; dayOfWeek: number }[][] = [];
-    
-    const reviewCounts: Record<string, number> = {};
-    (reviewLog || []).forEach(date => {
-      reviewCounts[date] = (reviewCounts[date] || 0) + 1;
-    });
-
-    const today = new Date();
-    const currentDayOfWeek = today.getDay();
-    
-    const startDate = new Date(today);
-    startDate.setDate(today.getDate() - (11 * 7 + currentDayOfWeek));
-
-    for (let w = 0; w < 12; w++) {
-      const weekDays = [];
-      for (let d = 0; d < 7; d++) {
-        const currentDate = new Date(startDate);
-        currentDate.setDate(startDate.getDate() + w * 7 + d);
-        const dateStr = currentDate.toISOString().split("T")[0];
-        
-        weekDays.push({
-          dateStr,
-          count: reviewCounts[dateStr] || 0,
-          dayOfWeek: d
-        });
-      }
-      heatmapGrid.push(weekDays);
-    }
-
-    return {
-      totalCards: allCards.length,
-      newCards,
-      learningCards,
-      matureCards,
-      streak,
-      heatmapGrid
-    };
+    return FlashcardService.statistics(notes, reviewLog || []);
   }, [notes, reviewLog]);
 
   // ----------------------------------------------------
@@ -255,7 +173,7 @@ export default function RightSidebar({
   // ----------------------------------------------------
   const skills = useMemo(() => {
     const tagRegex = /(?<=^|\s)#([\p{L}\p{N}_\-\/]+)/gu;
-    const allCards = extractFlashcards(notes);
+    const allCards = FlashcardService.extractFlashcards(notes);
     
     const tagXP: Record<string, number> = {};
     const noteTags: Record<string, string[]> = {};
@@ -303,9 +221,9 @@ export default function RightSidebar({
     const todayStr = new Date().toISOString().split("T")[0];
     
     notes.forEach(n => {
-      const { frontmatter } = splitFrontmatter(n.content);
+      const { frontmatter } = MarkdownService.splitFrontmatter(n.content);
       if (frontmatter) {
-        const metadata = parseYamlMetadata(frontmatter);
+        const metadata = MarkdownService.parseYamlMetadata(frontmatter);
         if (metadata.ir_next_read) {
           const nextReadVal = String(metadata.ir_next_read).trim();
           if (nextReadVal <= todayStr) {
@@ -326,15 +244,15 @@ export default function RightSidebar({
 
   const isCurrentNoteInReadingList = useMemo(() => {
     if (!currentNote) return false;
-    const { frontmatter } = splitFrontmatter(currentNote.content);
-    const metadata = parseYamlMetadata(frontmatter);
+    const { frontmatter } = MarkdownService.splitFrontmatter(currentNote.content);
+    const metadata = MarkdownService.parseYamlMetadata(frontmatter);
     return !!metadata.ir_next_read;
   }, [currentNote]);
 
   const handleAddToReadingList = () => {
     if (!currentNote || !onUpdateNote) return;
     const todayStr = new Date().toISOString().split("T")[0];
-    const newContent = updateYamlMetadata(currentNote.content, {
+    const newContent = MarkdownService.updateYamlMetadata(currentNote.content, {
       ir_next_read: todayStr,
       ir_interval: 1,
       ir_ease: 2.5,

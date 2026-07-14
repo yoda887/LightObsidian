@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Note } from "../types";
+import { Note } from "../../../shared/types/types";
 import { Clock } from "lucide-react";
 
 interface TimelineViewProps {

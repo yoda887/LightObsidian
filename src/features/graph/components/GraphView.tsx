@@ -4,8 +4,8 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Note, GraphNode, GraphLink } from "../types";
-import { extractWikilinks } from "../utils";
+import { Note, GraphNode, GraphLink } from "../../../shared/types/types";
+import { GraphService } from "../../../core/graph/GraphService";
 
 interface GraphViewProps {
   notes: Note[];
@@ -37,45 +37,13 @@ export default function GraphView({ notes, currentNoteId, onSelectNote }: GraphV
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Create / Update nodes while preserving coordinates of existing nodes if possible
-    const existingMap = new Map<string, GraphNode>(nodesRef.current.map(n => [n.id, n]));
-    
-    const newNodes = notes.map((note, idx) => {
-      const existing = existingMap.get(note.id);
-      if (existing) {
-        existing.title = note.title;
-        existing.isCurrent = note.id === currentNoteId;
-        return existing;
-      }
-      
-      const angle = (idx / Math.max(1, notes.length)) * Math.PI * 2;
-      const radius = Math.min(canvas.width, canvas.height) * 0.25;
-      return {
-        id: note.id,
-        title: note.title,
-        x: canvas.width / 2 + Math.cos(angle) * radius,
-        y: canvas.height / 2 + Math.sin(angle) * radius,
-        vx: 0,
-        vy: 0,
-        isCurrent: note.id === currentNoteId,
-      };
-    });
-
-    // Build connections based on wikilinks
-    const newLinks: GraphLink[] = [];
-    notes.forEach(note => {
-      const outgoing = extractWikilinks(note.content);
-      outgoing.forEach(link => {
-        const targetNote = notes.find(n => n.title.trim().toLowerCase() === link.target.toLowerCase());
-        if (targetNote && targetNote.id !== note.id) {
-          newLinks.push({
-            source: note.id,
-            target: targetNote.id,
-            type: link.type
-          });
-        }
-      });
-    });
+    const { nodes: newNodes, links: newLinks } = GraphService.buildGraph(
+      notes,
+      currentNoteId,
+      canvas.width,
+      canvas.height,
+      nodesRef.current
+    );
 
     nodesRef.current = newNodes;
     linksRef.current = newLinks;
@@ -122,55 +90,13 @@ export default function GraphView({ notes, currentNoteId, onSelectNote }: GraphV
         return;
       }
 
-      // 1. Calculate repulsion forces between all nodes (Coulomb-like force)
-      for (let i = 0; i < nodes.length; i++) {
-        const n1 = nodes[i];
-        for (let j = i + 1; j < nodes.length; j++) {
-          const n2 = nodes[j];
-          const dx = n2.x - n1.x;
-          const dy = n2.y - n1.y;
-          const dist = Math.hypot(dx, dy) || 1;
-          
-          if (dist < 250) {
-            const force = repelForce / (dist * dist);
-            const fx = (dx / dist) * force;
-            const fy = (dy / dist) * force;
-            
-            if (!isDraggingNodeRef.current || selectedNodeRef.current !== n1) {
-              n1.vx = (n1.vx || 0) - fx;
-              n1.vy = (n1.vy || 0) - fy;
-            }
-            if (!isDraggingNodeRef.current || selectedNodeRef.current !== n2) {
-              n2.vx = (n2.vx || 0) + fx;
-              n2.vy = (n2.vy || 0) + fy;
-            }
-          }
-        }
-      }
-
-      // 2. Calculate spring attraction forces along links (Hooke's law)
-      links.forEach(link => {
-        const sNode = nodes.find(n => n.id === link.source);
-        const tNode = nodes.find(n => n.id === link.target);
-        if (sNode && tNode) {
-          const dx = tNode.x - sNode.x;
-          const dy = tNode.y - sNode.y;
-          const dist = Math.hypot(dx, dy) || 1;
-          
-          // Optimal distance for links: 120px
-          const force = (dist - 130) * k;
-          const fx = (dx / dist) * force;
-          const fy = (dy / dist) * force;
-
-          if (!isDraggingNodeRef.current || selectedNodeRef.current !== sNode) {
-            sNode.vx = (sNode.vx || 0) + fx;
-            sNode.vy = (sNode.vy || 0) + fy;
-          }
-          if (!isDraggingNodeRef.current || selectedNodeRef.current !== tNode) {
-            tNode.vx = (tNode.vx || 0) - fx;
-            tNode.vy = (tNode.vy || 0) - fy;
-          }
-        }
+      // Compute forces and update node positions
+      GraphService.computeForces(nodes, links, selectedNodeRef.current, isDraggingNodeRef.current, {
+        repelForce,
+        k,
+        centerGravity,
+        width: canvas.width,
+        height: canvas.height,
       });
 
       // 3. Render Canvas
@@ -217,22 +143,8 @@ export default function GraphView({ notes, currentNoteId, onSelectNote }: GraphV
       });
       ctx.setLineDash([]); // reset dash
 
-      // Update positions and Draw Nodes
+      // Draw Nodes
       nodes.forEach(node => {
-        if (!isDraggingNodeRef.current || selectedNodeRef.current !== node) {
-          // Apply air resistance / damping
-          node.vx = (node.vx || 0) * 0.85;
-          node.vy = (node.vy || 0) * 0.85;
-
-          // Weak gravity pull to screen center
-          const centerDistX = (canvas.width / 2) - node.x;
-          const centerDistY = (canvas.height / 2) - node.y;
-          node.vx += centerDistX * centerGravity;
-          node.vy += centerDistY * centerGravity;
-
-          node.x += node.vx;
-          node.y += node.vy;
-        }
 
         // Draw node sphere
         ctx.beginPath();

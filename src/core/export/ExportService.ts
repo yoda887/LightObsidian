@@ -1,378 +1,10 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
+import { Note } from "../../shared/types/types";
 
-import { Note } from "./types";
-import { marked } from "marked";
-
-export interface ExtractedLink {
-  target: string;
-  type?: string;
-}
-
-/**
- * Extracts wikilinks [[Note Title]] or [[type:Note Title]] from note content.
- */
-export function extractWikilinks(content: string): ExtractedLink[] {
-  const regex = /\[\[(?:([^\]|:]+):)?([^\]|]+)(?:\|([^\]]+))?\]\]/g;
-  const links: ExtractedLink[] = [];
-  let match;
-  while ((match = regex.exec(content)) !== null) {
-    links.push({
-      type: match[1] ? match[1].trim() : undefined,
-      target: match[2].trim(),
-    });
-  }
-  
-  // Deduplicate by target + type
-  const unique = new Map<string, ExtractedLink>();
-  for (const link of links) {
-    unique.set(`${link.type || ''}::${link.target}`, link);
-  }
-  return Array.from(unique.values());
-}
-
-/**
- * Safely parses Markdown and converts Wikilinks into interactive HTML anchors.
- * Supports recursive transclusion of notes via ![[Note Title]].
- */
-export async function parseMarkdownToHtml(content: string, notes: Note[] = [], depth = 0): Promise<string> {
-  if (depth > 3) return `<div class="p-2 border border-red-500 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded text-xs my-2">Error: Transclusion depth limit reached.</div>`;
-
-  // Strip YAML frontmatter before parsing markdown
-  const frontmatterRegex = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/;
-  content = content.replace(frontmatterRegex, "");
-  // Скрываем комментарии %%...%% на этапе подготовки контента (используем HTML-комментарии)
-  content = content.replace(/%%([\s\S]*?)%%/g, '<!--$1-->');
-
-  // Handle transclusions: ![[Note Title]] or ![[Note Title#^block-id]] or ![[Note Title#Heading]]
-  const transclusions = Array.from(content.matchAll(/!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g));
-  for (const match of transclusions) {
-    const cleanTarget = match[1].trim();
-    const hashIdx = cleanTarget.indexOf("#");
-    let noteTitle = cleanTarget;
-    let anchor: string | null = null;
-    if (hashIdx > -1) {
-      noteTitle = cleanTarget.substring(0, hashIdx).trim();
-      anchor = cleanTarget.substring(hashIdx).trim();
-    }
-
-    const targetNote = notes.find(n => n.title.trim().toLowerCase() === noteTitle.toLowerCase());
+export const ExportService = {
+  generateSingleHtmlApp(notes: Note[]): string {
+    const notesJson = JSON.stringify(notes, null, 2);
     
-    let embedHtml = "";
-    if (targetNote) {
-      let childContent = targetNote.content;
-      
-      const childFrontmatterRegex = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/;
-      childContent = childContent.replace(childFrontmatterRegex, "");
-
-      if (noteTitle.startsWith("Extract:")) {
-        childContent = childContent.replace(/^#\s+Extract:[^\r\n]*(?:\r?\n)*/m, "");
-        childContent = childContent.replace(/^Source:\s+\[\[[^\]]*\]\](?:\r?\n)*/m, "");
-      }
-
-      if (anchor) {
-        if (anchor.startsWith("#^")) {
-          const blockId = anchor.substring(1).trim();
-          const paragraphs = childContent.split(/\r?\n\r?\n/);
-          let foundParagraph = "";
-          for (const p of paragraphs) {
-            if (p.trim().includes(blockId)) {
-              foundParagraph = p.replace(new RegExp(`\\s*${escapeRegExp(blockId)}\\s*$`), "").trim();
-              break;
-            }
-          }
-          if (foundParagraph) {
-            childContent = foundParagraph;
-          } else {
-            childContent = `<span class="text-rose-500 font-semibold italic">Block ${blockId} not found in note "${noteTitle}"</span>`;
-          }
-        } else {
-          const headerText = anchor.substring(1).trim().toLowerCase();
-          const lines = childContent.split(/\r?\n/);
-          let startIdx = -1;
-          let headerLevel = 0;
-          
-          for (let i = 0; i < lines.length; i++) {
-            const match = lines[i].match(/^(#+)\s+(.+)$/);
-            if (match && match[2].trim().toLowerCase() === headerText) {
-              startIdx = i;
-              headerLevel = match[1].length;
-              break;
-            }
-          }
-          
-          if (startIdx !== -1) {
-            const sectionLines: string[] = [];
-            sectionLines.push(lines[startIdx]);
-            
-            for (let i = startIdx + 1; i < lines.length; i++) {
-              const match = lines[i].match(/^(#+)\s+(.+)$/);
-              if (match) {
-                const nextLevel = match[1].length;
-                if (nextLevel <= headerLevel) {
-                  break;
-                }
-              }
-              sectionLines.push(lines[i]);
-            }
-            childContent = sectionLines.join("\n");
-          } else {
-            childContent = `<span class="text-rose-500 font-semibold italic">Header "${anchor.substring(1)}" not found in note "${noteTitle}"</span>`;
-          }
-        }
-      }
-
-      const parsedChild = await parseMarkdownToHtml(childContent, notes, depth + 1);
-      embedHtml = `<div class="transclusion relative border-l-4 border-indigo-500 pl-4 py-2 pr-8 my-4 bg-slate-50 dark:bg-zinc-900 rounded-r shadow-sm group"><div class="absolute top-2 right-2 opacity-50 hover:opacity-100 cursor-pointer text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300 transition-opacity p-1 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900/50" data-note="${encodeURIComponent(cleanTarget)}" title="Open note">🔗</div><div class="embed-content">${parsedChild}</div></div>`;
-    } else {
-      embedHtml = `<div class="transclusion relative border-l-4 border-slate-300 dark:border-zinc-700 pl-4 py-2 pr-8 my-4 bg-slate-50 dark:bg-zinc-900 rounded-r shadow-sm group"><div class="absolute top-2 right-2 opacity-50 hover:opacity-100 cursor-pointer text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 transition-opacity p-1 rounded hover:bg-slate-200 dark:hover:bg-zinc-800" data-note="${encodeURIComponent(cleanTarget)}" title="Click to create">🔗</div><div class="text-slate-500 dark:text-zinc-500 text-sm italic">Note "${noteTitle}" not found. Click icon to create.</div></div>`;
-    }
-    content = content.replace(match[0], embedHtml);
-  }
-
-  // Pre-process :::test blocks
-  const tests: string[] = [];
-  content = content.replace(/^:::test\s*\n([\s\S]*?)\n:::$/gm, (match, inner) => {
-    tests.push(inner);
-    return `\n\n@@TEST_BLOCK_${tests.length - 1}@@\n\n`;
-  });
-
-  // Parse standard Markdown
-  let parsed = await marked.parse(content, { breaks: true, gfm: true });
-
-  // Post-process :::test blocks
-  for (let i = 0; i < tests.length; i++) {
-    const innerHtml = await marked.parse(tests[i], { breaks: true, gfm: true });
-    const decoratedHtml = `<div class="bg-indigo-50/50 dark:bg-indigo-900/10 p-5 rounded-xl border-2 border-indigo-200 dark:border-indigo-800/50 my-6 shadow-sm"><div class="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-3 flex items-center gap-1"><span class="text-base">📋</span> Quiz / Test</div><div class="test-content space-y-2">${innerHtml}</div></div>`;
-    parsed = parsed.replace(`<p>@@TEST_BLOCK_${i}@@</p>`, decoratedHtml).replace(`@@TEST_BLOCK_${i}@@`, decoratedHtml);
-  }
-  
-  // Replace Flashcards (Question :: Answer or Question ::: Answer)
-  parsed = parsed.replace(/<p>(.+?)\s+(::|:::)\s+(.+?)<\/p>/g, (match, q, sep, a) => {
-    return `<p>${q} <span class="text-indigo-400 dark:text-indigo-600 font-bold mx-1">${sep}</span> <span class="group relative inline-flex min-w-[2rem] bg-amber-100 dark:bg-amber-900/40 px-1.5 rounded-sm border-b-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap">${a}</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">...</span></span></p>`;
-  });
-
-  // Replace Multi-line Flashcards (?)
-  // Handle both single paragraph with <br> and separate paragraphs
-  const renderMultiline = (q: string, a: string) => `<div class="bg-indigo-50/50 dark:bg-indigo-900/10 p-3 rounded my-4 border border-indigo-100 dark:border-indigo-800/50"><div class="font-semibold text-slate-800 dark:text-zinc-200 mb-2">${q}</div><div class="group relative inline-flex w-full bg-amber-100 dark:bg-amber-900/40 p-2 rounded border-l-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap w-full">${a}</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-sm font-bold tracking-widest">Наведите для ответа...</span></div></div>`;
-  
-  parsed = parsed.replace(/<p>([\s\S]+?)<\/p>\s*<p>\?<\/p>\s*<p>([\s\S]+?)<\/p>/g, (match, q, a) => renderMultiline(q, a));
-  parsed = parsed.replace(/<p>([\s\S]+?)<br>\?<br>([\s\S]+?)<\/p>/g, (match, q, a) => renderMultiline(q, a));
-
-  // Replace Type-In Deletions ({{type:cloze}})
-  parsed = parsed.replace(/\{\{type:(.*?)\}\}/g, (match, text) => {
-    return `<span class="group relative inline-flex min-w-[2rem] bg-indigo-100 dark:bg-indigo-900/40 px-1.5 rounded-sm border-b-2 border-indigo-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-indigo-800 dark:text-indigo-300 whitespace-pre-wrap">✏️ ${text}</span><span class="absolute inset-0 flex items-center justify-center text-indigo-600 dark:text-indigo-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">✏️ ...</span></span>`;
-  });
-
-  // Replace Cloze Deletions ({{cloze}} and ==cloze==)
-  parsed = parsed.replace(/\{\{(.*?)\}\}|==(.*?)==/g, (match, cloze1, cloze2) => {
-    const text = cloze1 || cloze2;
-    return `<span class="group relative inline-flex min-w-[2rem] bg-amber-100 dark:bg-amber-900/40 px-1.5 rounded-sm border-b-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap">${text}</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">...</span></span>`;
-  });
-
-  
-  // Replace tags: #word with special statuses
-  const tagRegex = /(^|\s|>)(#[\p{L}\p{N}_\-\/]+)/gu;
-  parsed = parsed.replace(tagRegex, (_, prefix, tag) => {
-    const t = tag.toLowerCase();
-    if (t === '#seed') {
-      return `${prefix}<span class="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 rounded-md text-xs font-bold mx-0.5 inline-flex items-center gap-1 shadow-sm border border-emerald-200 dark:border-emerald-800/50">🌱 Seed</span>`;
-    } else if (t === '#incubator') {
-      return `${prefix}<span class="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 rounded-md text-xs font-bold mx-0.5 inline-flex items-center gap-1 shadow-sm border border-amber-200 dark:border-amber-800/50">🐣 Incubator</span>`;
-    } else if (t === '#evergreen') {
-      return `${prefix}<span class="px-2 py-0.5 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 rounded-md text-xs font-bold mx-0.5 inline-flex items-center gap-1 shadow-sm border border-green-200 dark:border-green-800/50">🌲 Evergreen</span>`;
-    }
-    return `${prefix}<span class="px-1.5 py-0.5 bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 rounded-md text-xs font-medium mx-0.5 inline-block">${tag}</span>`;
-  });
-
-  // Replace block identifiers (e.g. ^block-id) at the end of HTML block elements
-  parsed = parsed.replace(/(\^[\w\-]+)(?=\s*<\/p>|\s*<\/li>|\s*<\/div>|\s*$)/g, '<span class="block-id font-mono text-[10px] text-violet-500 opacity-60 ml-2 select-none font-bold bg-violet-50 dark:bg-violet-950/40 px-1.5 py-0.5 rounded border border-violet-200/50 dark:border-violet-800/30">$1</span>');
-
-// ИЗМЕНЕНИЕ: Находим комментарии %%...%% и оборачиваем их в скрытый тег
-  //const contentWithHiddenComments = content.replace(/%%([\s\S]*?)%%/g, '<span class="obsidian-comment" style="display: none;">$1</span>');
-  // Передаем очищенный текст в стандартный парсер marked
-  //parsed = await marked.parse(contentWithHiddenComments);
-
-  // Replace [[type:Note Title]] or [[Note Title|Custom Label]]
-  const wikilinkRegex = /\[\[(?:([^\]|:]+):)?([^\]|]+)(?:\|([^\]]+))?\]\]/g;
-  return parsed.replace(wikilinkRegex, (_, typeMatch, target, label) => {
-    const cleanTarget = target.trim();
-    const displayLabel = label ? label.trim() : cleanTarget;
-    const typeBadge = typeMatch ? `<span class="font-bold text-rose-600 dark:text-rose-400 mr-1">${typeMatch.trim()}:</span>` : "";
-    return `${typeBadge}<span data-note="${encodeURIComponent(cleanTarget)}" class="wikilink cursor-pointer text-violet-600 dark:text-violet-400 hover:text-violet-500 dark:hover:text-violet-300 hover:underline font-semibold border-b border-dashed border-violet-400 transition-colors">${displayLabel}</span>`;
-  });
-}
-
-/**
- * Splits raw note content into its frontmatter and body.
- */
-export function splitFrontmatter(content: string): { frontmatter: string; body: string } {
-  const frontmatterRegex = /^---\r?\n([\s\S]*?\r?\n)---(?:\r?\n|$)/;
-  const match = content.match(frontmatterRegex);
-  if (match) {
-    return {
-      frontmatter: match[0],
-      body: content.substring(match[0].length),
-    };
-  }
-  return { frontmatter: "", body: content };
-}
-
-/**
- * Parses raw frontmatter content into a key-value object.
- */
-export function parseYamlMetadata(yamlText: string): Record<string, string | string[]> {
-  const metadata: Record<string, string | string[]> = {};
-  const cleanYaml = yamlText.replace(/^---\r?\n/, "").replace(/\r?\n---(?:\r?\n|$)/, "");
-  const lines = cleanYaml.split(/\r?\n/);
-  let currentKey: string | null = null;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-
-    // Check if this is a continuation list item (starts with "- ")
-    if (/^\s+- /.test(line) && currentKey) {
-      const itemValue = trimmed.substring(2).trim().replace(/^["']|["']$/g, "");
-      const existing = metadata[currentKey];
-      if (Array.isArray(existing)) {
-        existing.push(itemValue);
-      } else {
-        metadata[currentKey] = [itemValue];
-      }
-      continue;
-    }
-
-    const colonIndex = trimmed.indexOf(':');
-    if (colonIndex > -1) {
-      const key = trimmed.substring(0, colonIndex).trim();
-      let value = trimmed.substring(colonIndex + 1).trim();
-
-      if (value.startsWith('[') && value.endsWith(']')) {
-        // Inline array: tags: [study, dev]
-        const arrayVals = value.substring(1, value.length - 1)
-          .split(',')
-          .map(v => v.trim().replace(/^["']|["']$/g, ""))
-          .filter(Boolean);
-        metadata[key] = arrayVals;
-        currentKey = key;
-      } else if (value === "") {
-        // Empty value — could be followed by indented list items
-        metadata[key] = "";
-        currentKey = key;
-      } else {
-        value = value.replace(/^["']|["']$/g, "");
-        metadata[key] = value;
-        currentKey = key;
-      }
-    }
-  }
-
-  // Clean up: convert empty strings that became arrays back
-  for (const key of Object.keys(metadata)) {
-    if (metadata[key] === "") {
-      // Check if next processing turned it into array — if still empty string, keep it
-    }
-  }
-
-  return metadata;
-}
-
-/**
- * Safely updates simple metadata keys in raw markdown YAML frontmatter,
- * leaving arrays/lists like cards: or other lines verbatim.
- */
-export function updateYamlMetadata(content: string, updates: Record<string, any>): string {
-  const { frontmatter, body } = splitFrontmatter(content);
-  if (!frontmatter) {
-    const fmLines = ["---"];
-    Object.entries(updates).forEach(([k, v]) => {
-      if (v !== undefined && v !== null) {
-        fmLines.push(`${k}: ${v}`);
-      }
-    });
-    fmLines.push("---");
-    return fmLines.join("\n") + "\n" + body;
-  }
-
-  const cleanYaml = frontmatter.replace(/^---\r?\n/, "").replace(/\r?\n---(?:\r?\n|$)/, "");
-  const lines = cleanYaml.split(/\r?\n/);
-  const newLines: string[] = [];
-  const keysToUpdate = { ...updates };
-
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i];
-    const colonIndex = line.indexOf(':');
-    if (colonIndex > -1) {
-      const key = line.substring(0, colonIndex).trim();
-      if (key in keysToUpdate) {
-        const val = keysToUpdate[key];
-        if (val !== undefined && val !== null) {
-          newLines.push(`${key}: ${val}`);
-        }
-        delete keysToUpdate[key];
-        i++;
-        continue;
-      }
-    }
-    newLines.push(line);
-    i++;
-  }
-
-  // Append remaining new keys
-  Object.entries(keysToUpdate).forEach(([k, v]) => {
-    if (v !== undefined && v !== null) {
-      newLines.push(`${k}: ${v}`);
-    }
-  });
-
-  return `---\n${newLines.join("\n")}\n---\n${body}`;
-}
-
-/**
- * Fuzzy replacement helper mapping plain text selections to markdown.
- */
-export function replacePlaintextInMarkdown(markdown: string, plainText: string, replacement: string): string {
-  const target = plainText.trim();
-  if (!target) return markdown;
-
-  // 1. Check literal match
-  const literalIdx = markdown.indexOf(target);
-  if (literalIdx > -1) {
-    return markdown.substring(0, literalIdx) + replacement + markdown.substring(literalIdx + target.length);
-  }
-
-  // 2. Fuzzy match across markdown tags using word-joining regex
-  const words = target.split(/\s+/).map(w => w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
-  if (words.length === 0) return markdown;
-  
-  const regexStr = words.join('(?:\\s*|[*_`[\\]{}!\\s]+)*');
-  try {
-    const regex = new RegExp(regexStr, 'i');
-    const match = markdown.match(regex);
-    if (match && match.index !== undefined) {
-      return markdown.substring(0, match.index) + replacement + markdown.substring(match.index + match[0].length);
-    }
-  } catch (e) {
-    console.error("Fuzzy replacement failed", e);
-  }
-  
-  return markdown.replace(target, replacement);
-}
-
-/**
- * Generates a fully self-contained HTML file which includes the Obsidian Lite editor,
- * beautiful styling via Tailwind CSS CDN, Lucide Icons, interactive Canvas Graph View,
- * and pre-packaged notes, with the ability to function as a Windows .hta application.
- */
-export function generateSingleHtmlApp(notes: Note[]): string {
-  const notesJson = JSON.stringify(notes, null, 2);
-  
-  return `<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -603,7 +235,7 @@ export function generateSingleHtmlApp(notes: Note[]): string {
         notes = [{
           id: "welcome",
           title: "Welcome Note",
-          content: "# Welcome to Lite Obsidian\\n\\nThis is your lightweight knowledge base analogue of Obsidian. \\n\\n## Key Features:\\n- **Markdown Support**: Style your text easily.\\n- **Wikilinks**: Type '[[Another Note]]' to link notes. Click the link to instantly jump or create that note!\\n- **Backlinks**: See which notes refer to the current one at the bottom of the Preview tab.\\n- **Connection Graph**: Switch to the Graph Connection tab to visualize your knowledge database!\\n- **Standalone Exporter**: Click 'Export HTA/HTML' to download a new compiled file with your latest changes inside it. You can rename it to '.hta' for instant Windows app conversion!\\n\\nTry clicking this link to make a new note: [[My Ideas]]",
+          content: "# Welcome to Lite Obsidian\\\\n\\\\nThis is your lightweight knowledge base analogue of Obsidian. \\\\n\\\\n## Key Features:\\\\n- **Markdown Support**: Style your text easily.\\\\n- **Wikilinks**: Type '[[Another Note]]' to link notes. Click the link to instantly jump or create that note!\\\\n- **Backlinks**: See which notes refer to the current one at the bottom of the Preview tab.\\\\n- **Connection Graph**: Switch to the Graph Connection tab to visualize your knowledge database!\\\\n- **Standalone Exporter**: Click 'Export HTA/HTML' to download a new compiled file with your latest changes inside it. You can rename it to '.hta' for instant Windows app conversion!\\\\n\\\\nTry clicking this link to make a new note: [[My Ideas]]",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }];
@@ -723,7 +355,7 @@ export function generateSingleHtmlApp(notes: Note[]): string {
       const newNote = {
         id: "note_" + Date.now(),
         title: title,
-        content: "# " + title + "\\n\\nStart writing something here...",
+        content: "# " + title + "\\\\n\\\\nStart writing something here...",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -787,14 +419,14 @@ export function generateSingleHtmlApp(notes: Note[]): string {
         return;
       }
 
-      const frontmatterRegex = /^---\\r?\\n([\\s\\S]*?\\r?\\n)---(?:\\r?\\n|$)/;
+      const frontmatterRegex = /^---\\\\r?\\\\n([\\\\s\\\\S]*?\\\\r?\\\\n)---(?:\\\\r?\\\\n|$)/;
       const match = (note.content || "").match(frontmatterRegex);
       const frontmatter = match ? match[0] : "";
       const yamlInner = frontmatter
-        ? frontmatter.replace(/^---\\r?\\n/, "").replace(/\\r?\\n---(?:\\r?\\n|$)/, "")
+        ? frontmatter.replace(/^---\\\\r?\\\\n/, "").replace(/\\\\r?\\\\n---(?:\\\\r?\\\\n|$)/, "")
         : "";
       
-      const keyCount = yamlInner ? yamlInner.split('\n').filter(Boolean).length : 0;
+      const keyCount = yamlInner ? yamlInner.split('\\n').filter(Boolean).length : 0;
       const keyCountText = yamlInner ? "(" + keyCount + " keys)" : "(empty)";
 
       container.innerHTML = 
@@ -819,27 +451,27 @@ export function generateSingleHtmlApp(notes: Note[]): string {
     function handleYamlEditorChange(newYaml) {
       const note = notes.find(n => n.id === currentNoteId);
       if (note) {
-        const frontmatterRegex = /^---\\r?\\n([\\s\\S]*?\\r?\\n)---(?:\\r?\\n|$)/;
+        const frontmatterRegex = /^---\\\\r?\\\\n([\\\\s\\\\S]*?\\\\r?\\\\n)---(?:\\\\r?\\\\n|$)/;
         const match = (note.content || "").match(frontmatterRegex);
         const currentFrontmatter = match ? match[0] : "";
         const body = (note.content || "").substring(currentFrontmatter.length);
         
         const trimmedYaml = newYaml.trim();
-        const newFrontmatter = trimmedYaml ? "---\\n" + trimmedYaml + "\\n---\\n" : "";
+        const newFrontmatter = trimmedYaml ? "---\\\\n" + trimmedYaml + "\\\\n---\\\\n" : "";
         note.content = newFrontmatter + body;
         note.updatedAt = new Date().toISOString();
         saveNotes();
         renderMarkdownPreview(note);
         
-        const keyCount = trimmedYaml ? trimmedYaml.split('\n').filter(Boolean).length : 0;
+        const keyCount = trimmedYaml ? trimmedYaml.split('\\n').filter(Boolean).length : 0;
         document.getElementById("yaml-key-count").innerText = trimmedYaml ? "(" + keyCount + " keys)" : "(empty)";
       }
     }
 
     function parseYamlMetadata(yamlText) {
       const metadata = {};
-      const cleanYaml = yamlText.replace(/^---\\r?\\n/, "").replace(/\\r?\\n---(?:\\r?\\n|$)/, "");
-      const lines = cleanYaml.split(/\\r?\\n/);
+      const cleanYaml = yamlText.replace(/^---\\\\r?\\\\n/, "").replace(/\\\\r?\\\\n---(?:\\\\r?\\\\n|$)/, "");
+      const lines = cleanYaml.split(/\\\\r?\\\\n/);
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith("#")) continue;
@@ -884,7 +516,7 @@ export function generateSingleHtmlApp(notes: Note[]): string {
       document.getElementById("note-title-input").value = note.title;
 
       // Split frontmatter and body
-      const frontmatterRegex = /^---\\r?\\n([\\s\\S]*?\\r?\\n)---(?:\\r?\\n|$)/;
+      const frontmatterRegex = /^---\\\\r?\\\\n([\\\\s\\\\S]*?\\\\r?\\\\n)---(?:\\\\r?\\\\n|$)/;
       const match = (note.content || "").match(frontmatterRegex);
       let frontmatter = "";
       let body = note.content || "";
@@ -940,7 +572,7 @@ export function generateSingleHtmlApp(notes: Note[]): string {
       const note = notes.find(n => n.id === currentNoteId);
       if (note) {
         if (hideYaml) {
-          const frontmatterRegex = /^---\\r?\\n([\\s\\S]*?\\r?\\n)---(?:\\r?\\n|$)/;
+          const frontmatterRegex = /^---\\\\r?\\\\n([\\\\s\\\\S]*?\\\\r?\\\\n)---(?:\\\\r?\\\\n|$)/;
           const match = (note.content || "").match(frontmatterRegex);
           const currentFrontmatter = match ? match[0] : "";
           note.content = currentFrontmatter + val;
@@ -960,7 +592,7 @@ export function generateSingleHtmlApp(notes: Note[]): string {
 
       // Note Metadata Block
       const previewYamlContainer = document.getElementById("preview-yaml-container");
-      const frontmatterRegex = /^---\\r?\\n([\\s\\S]*?\\r?\\n)---(?:\\r?\\n|$)/;
+      const frontmatterRegex = /^---\\\\r?\\\\n([\\\\s\\\\S]*?\\\\r?\\\\n)---(?:\\\\r?\\\\n|$)/;
       const match = (note.content || "").match(frontmatterRegex);
       const frontmatter = match ? match[0] : "";
       
@@ -1014,19 +646,19 @@ export function generateSingleHtmlApp(notes: Note[]): string {
 
       // HTML Render
       let cleanContent = (note.content || "").replace(frontmatterRegex, "");
-      cleanContent = cleanContent.replace(/%%([\\s\\S]*?)%%/g, '<!--$1-->');
+      cleanContent = cleanContent.replace(/%%([\\\\s\\\\S]*?)%%/g, '<!--$1-->');
       let rawHtml = marked.parse(cleanContent, { breaks: true, gfm: true });
       
       // Parse Flashcards
-      rawHtml = rawHtml.replace(/<p>(.+?)\\s+::\\s+(.+?)<\\/p>/g, function(match, q, a) {
+      rawHtml = rawHtml.replace(/<p>(.+?)\\\\s+::\\\\s+(.+?)<\\\\/p>/g, function(match, q, a) {
         return '<p>' + q + ' <span class="text-indigo-400 dark:text-indigo-600 font-bold mx-1">::</span> <span class="group relative inline-flex min-w-[2rem] bg-amber-100 dark:bg-amber-900/40 px-1.5 rounded-sm border-b-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap">' + a + '</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">...</span></span></p>';
       });
 
       // Parse Cloze Deletions
-      rawHtml = rawHtml.replace(/\\{\\{(.*?)\\}\\}/g, '<span class="group relative inline-flex min-w-[2rem] bg-amber-100 dark:bg-amber-900/40 px-1.5 rounded-sm border-b-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap">$1</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">...</span></span>');
+      rawHtml = rawHtml.replace(/\\\\{\\\\{(.*?)\\\\}\\\\}/g, '<span class="group relative inline-flex min-w-[2rem] bg-amber-100 dark:bg-amber-900/40 px-1.5 rounded-sm border-b-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap">$1</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">...</span></span>');
       
       // Parse [[Wikilinks]]
-      const wikilinkRegex = /\\\\\\[\\\\\\[([^\\\\\\]|]+)(?:\\\\|[^\\\\\\]]+)?\\\\\\]\\\\\\]/g;
+      const wikilinkRegex = /\\\\\\\\\\\\[\\\\\\\\\\\\[([^\\\\\\\\\\\\]|]+)(?:\\\\\\\\\\\\|[^\\\\\\\\\\\\]]+)?\\\\\\\\\\\\]\\\\\\\\\\\\]/g;
       const linkedHtml = rawHtml.replace(wikilinkRegex, (_, target, label) => {
         const cleanTarget = target.trim();
         const displayLabel = label ? label.trim() : cleanTarget;
@@ -1051,7 +683,7 @@ export function generateSingleHtmlApp(notes: Note[]): string {
       const linkingNotes = notes.filter(n => {
         if (n.id === currentNoteId) return false;
         // Simple scan for wikilink format referencing this title
-        const regex = new RegExp("\\\\\\\\\\[\\\\\\\\\\\\[\\\\\\\\s*" + escapeRegExp(noteTitle) + "\\\\\\\\s*(?:\\\\\\\\|.*?)?\\\\\\\\\\\\]\\\\\\\\\\\\]", "i");
+        const regex = new RegExp("\\\\\\\\\\\\\\\\\\\\[\\\\\\\\\\\\\\\\\\\\[\\\\\\\\\\\\\\\\\\\\\\\\s*" + escapeRegExp(noteTitle) + "\\\\\\\\\\\\\\\\\\\\\\\\s*(?:\\\\\\\\\\\\\\\\\\\\\\\\|.*?)?\\\\\\\\\\\\\\\\\\\\\\]\\\\\\\\\\\\\\\\\\\\]", "i");
         return regex.test(n.content);
       });
 
@@ -1072,7 +704,7 @@ export function generateSingleHtmlApp(notes: Note[]): string {
     }
 
     function escapeRegExp(string) {
-      return string.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&');
+      return string.replace(/[.*+?^\\\${}()|[\\\\\\\\]\\\\\\\\]/g, '\\\\\\\\$&');
     }
 
     // Navigate to a note by its title
@@ -1082,7 +714,7 @@ export function generateSingleHtmlApp(notes: Note[]): string {
         selectNote(found.id);
       } else {
         // Create it automatically
-        if (confirm("Note \\"" + title + "\\" does not exist. Would you like to create it?")) {
+        if (confirm("Note \\\\\\\"" + title + "\\\\\\\" does not exist. Would you like to create it?")) {
           createNewNote(title);
         }
       }
@@ -1137,7 +769,7 @@ export function generateSingleHtmlApp(notes: Note[]): string {
       let source = document.documentElement.outerHTML;
       
       // We need to replace EMBEDDED_NOTES assignment in the file
-      const updatedSource = "<!" + "DOCTYPE html>\\n" + source.replace(/const EMBEDDED_NOTES = [\\s\\S]*?\\n\\s*\\/\\/ App state/g, "const EMBEDDED_NOTES = " + currentNotesString + ";\\n\\n    // App state");
+      const updatedSource = "<!" + "DOCTYPE html>\\\\n" + source.replace(/const EMBEDDED_NOTES = [\\\\s\\\\S]*?\\\\n\\\\s*\\\\/\\\\/ App state/g, "const EMBEDDED_NOTES = " + currentNotesString + ";\\\\n\\\\n    // App state");
       
       const blob = new Blob([updatedSource], { type: "text/html" });
       const link = document.createElement("a");
@@ -1182,7 +814,7 @@ export function generateSingleHtmlApp(notes: Note[]): string {
       graphLinks = [];
       notes.forEach(note => {
         // Extract links
-        const regex = /\\\\\\[\\\\\\[([^\\\\\\]|]+)(?:\\\\|[^\\\\\\]]+)?\\\\\\]\\\\\\]/g;
+        const regex = /\\\\\\\\\\\\\\\\[\\\\\\\\\\\\\\\\[([^\\\\\\\\\\\\\\\\]|]+)(?:\\\\\\\\\\\\\\\\|[^\\\\\\\\\\\\\\\\]]+)?\\\\\\\\\\\\\\\\]\\\\\\\\\\\\\\\\]/g;
         let match;
         while ((match = regex.exec(note.content)) !== null) {
           const targetTitle = match[1].trim().toLowerCase();
@@ -1400,38 +1032,5 @@ export function generateSingleHtmlApp(notes: Note[]): string {
   </script>
 </body>
 </html>`;
-}
-export function updateLinksInContent(content: string, oldTitle: string, newTitle: string, keepAsAlias: boolean): string {
-  const oldTitleLower = oldTitle.trim().toLowerCase();
-  const wikilinkRegex = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
-  
-  return content.replace(wikilinkRegex, (match, targetAndHash, existingAlias) => {
-    const hashIdx = targetAndHash.indexOf("#");
-    let target = targetAndHash;
-    let hash = "";
-    if (hashIdx > -1) {
-      target = targetAndHash.substring(0, hashIdx);
-      hash = targetAndHash.substring(hashIdx);
-    }
-    
-    if (target.trim().toLowerCase() === oldTitleLower) {
-      const finalTarget = `${newTitle}${hash}`;
-      
-      if (existingAlias !== undefined) {
-        return `[[${finalTarget}|${existingAlias}]]`;
-      }
-      
-      if (keepAsAlias) {
-        return `[[${finalTarget}|${targetAndHash}]]`;
-      }
-      
-      return `[[${finalTarget}]]`;
-    }
-    return match;
-  });
-}
-
-export function escapeRegExp(string: string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
-}
-
+  }
+};

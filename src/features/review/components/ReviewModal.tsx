@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { X, Brain, RotateCcw, Check, Zap, FileText, ChevronRight } from "lucide-react";
-import { Flashcard } from "../flashcards";
+import { Flashcard } from "../../../core/flashcards/FlashcardService";
 
 interface ReviewModalProps {
   isOpen: boolean;

@@ -1,4 +1,4 @@
-import { extractFlashcards } from "./src/flashcards";
+import { extractFlashcards } from "./src/core/flashcards/FlashcardService";
 
 const notes = [{
   id: "test",
