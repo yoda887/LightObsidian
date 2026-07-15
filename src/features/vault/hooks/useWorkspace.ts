@@ -29,6 +29,7 @@ export function useWorkspace({
   const [syncProgressText, setSyncProgressText] = useState<string>("");
   const [isVaultLoading, setIsVaultLoading] = useState<boolean>(false);
   const [isVaultSaving, setIsVaultSaving] = useState<boolean>(false);
+  const [isInitialSynced, setIsInitialSynced] = useState<boolean>(false);
 
   const countFilesRecursively = async (dirHandle: any): Promise<number> => {
     let count = 0;
@@ -72,10 +73,12 @@ export function useWorkspace({
 
           const existing = existingNotesMap.get(id);
           const isPendingWrite = pendingWritesRef.current.has(id);
-
+          const isCurrentNote = id === currentNoteId; // Проверяем, редактируется ли заметка прямо сейчас
+          
           if (existing) {
             const existingTime = new Date(existing.updatedAt).getTime();
-            if (isPendingWrite || existingTime >= file.lastModified || existing.updatedAt === statDate) {
+            // Если есть отложенная запись, или это текущая заметка, или файл на диске старее — сохраняем UI-версию
+            if (isPendingWrite || isCurrentNote || existingTime >= file.lastModified || existing.updatedAt === statDate) {
               notesResult.push(existing);
               continue;
             }
@@ -244,11 +247,12 @@ export function useWorkspace({
     initData();
   }, []);
 
-  // Sync vault with external changes when vaultHandle changes
+  // Выполняем полную синхронизацию только один раз при первом открытии/восстановлении доступа
   useEffect(() => {
-    if (!vaultHandle) return;
+    if (!vaultHandle || isInitialSynced) return;
     performSync(vaultHandle);
-  }, [vaultHandle, performSync]);
+    setIsInitialSynced(true);
+  }, [vaultHandle, performSync, isInitialSynced]);
 
   return {
     vaultHandle,
