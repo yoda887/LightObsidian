@@ -10,6 +10,7 @@ export interface Note {
   createdAt: string;
   updatedAt: string;
   path?: string; // Relative path from the vault root (e.g. "Projects/Active")
+  isLoaded?: boolean;
 }
 
 export interface GraphNode {

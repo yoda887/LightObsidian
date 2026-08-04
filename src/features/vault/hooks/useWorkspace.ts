@@ -44,7 +44,7 @@ export function useWorkspace({
     return count;
   };
 
-  const getFilesRecursively = async (
+  const getStructureRecursively = async (
     dirHandle: any,
     currentPath: string = "",
     existingNotesMap: Map<string, Note> = new Map(),
@@ -79,19 +79,19 @@ export function useWorkspace({
             const existingTime = new Date(existing.updatedAt).getTime();
             // Если есть отложенная запись, или это текущая заметка, или файл на диске старее — сохраняем UI-версию
             if (isPendingWrite || isCurrentNote || existingTime >= file.lastModified || existing.updatedAt === statDate) {
-              notesResult.push(existing);
+              notesResult.push({ ...existing, isLoaded: true });
               continue;
             }
           }
 
-          const content = await file.text();
           notesResult.push({
             id,
             title: entry.name.replace('.md', ''),
-            content: content,
+            content: "", // Empty stub
             createdAt: existing ? existing.createdAt : statDate,
             updatedAt: statDate,
-            path: currentPath
+            path: currentPath,
+            isLoaded: false // Needs content download
           });
         } catch (e) {
           console.error("Error reading file", entry.name, e);
@@ -100,7 +100,7 @@ export function useWorkspace({
         if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
         const subPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
         foldersResult.push(subPath);
-        const subData = await getFilesRecursively(entry, subPath, existingNotesMap, onFileRead, progressCounter);
+        const subData = await getStructureRecursively(entry, subPath, existingNotesMap, onFileRead, progressCounter);
         notesResult.push(...subData.notes);
         foldersResult.push(...subData.folders);
       }
@@ -119,6 +119,68 @@ export function useWorkspace({
     return currentHandle;
   }, []);
 
+  const downloadContentsInBatches = async (
+    targetHandle: any,
+    stubNotes: Note[]
+  ) => {
+    const notesToDownload = stubNotes.filter(n => n.isLoaded === false);
+    if (notesToDownload.length === 0) return;
+
+    setSyncStatus("syncing");
+    setSyncProgressText(`Загрузка контента: 0/${notesToDownload.length}`);
+
+    const batchSize = 10;
+    let completedCount = 0;
+
+    for (let i = 0; i < notesToDownload.length; i += batchSize) {
+      const batch = notesToDownload.slice(i, i + batchSize);
+      
+      const updatedBatchNotes = await Promise.all(batch.map(async (stubNote) => {
+        try {
+          const dirHandle = await getDirHandleByPath(targetHandle, stubNote.path);
+          const fileHandle = await dirHandle.getFileHandle(`${stubNote.title}.md`);
+          const file = await fileHandle.getFile();
+          const content = await file.text();
+          
+          const fullNote: Note = {
+            ...stubNote,
+            content,
+            isLoaded: true
+          };
+          
+          await NoteRepository.save(fullNote);
+          return fullNote;
+        } catch (e) {
+          console.error(`Failed to download content for ${stubNote.id}`, e);
+          return stubNote;
+        }
+      }));
+
+      completedCount += batch.length;
+      setSyncProgressText(`Загрузка контента: ${completedCount}/${notesToDownload.length}`);
+
+      setNotes(prev => {
+        const newNotes = [...prev];
+        for (const updatedNote of updatedBatchNotes) {
+          if (updatedNote.isLoaded) {
+            const index = newNotes.findIndex(n => n.id === updatedNote.id);
+            if (index !== -1) {
+              newNotes[index] = updatedNote;
+            }
+          }
+        }
+        return newNotes;
+      });
+    }
+
+    setSyncStatus("success");
+    setSyncProgressText("Синхронизация успешно завершена");
+    setTimeout(() => {
+      setSyncStatus("idle");
+      setSyncProgressText("");
+    }, 3000);
+  };
+
   const performSync = useCallback(async (targetHandle = vaultHandle) => {
     if (!targetHandle) return;
     setSyncStatus("syncing");
@@ -128,54 +190,53 @@ export function useWorkspace({
     try {
       const totalFiles = await countFilesRecursively(targetHandle);
 
-      setSyncProgressText(`Чтение файлов: 0/${totalFiles}`);
+      setSyncProgressText(`Чтение структуры: 0/${totalFiles}`);
       const existingMap = new Map<string, Note>(notesRef.current.map(n => [n.id, n]));
-      const { notes: loadedNotes, folders: loadedFolders } = await getFilesRecursively(
+      
+      const { notes: stubNotes, folders: loadedFolders } = await getStructureRecursively(
         targetHandle,
         "",
         existingMap,
-        (current) => setSyncProgressText(`Чтение файлов: ${current}/${totalFiles}`)
+        (current) => setSyncProgressText(`Чтение структуры: ${current}/${totalFiles}`)
       );
 
-      setSyncProgressText(`Сохранение заметок: 0/${loadedNotes.length}`);
-      await NoteRepository.clear();
-
-      let putCount = 0;
-      for (const n of loadedNotes) {
-        await NoteRepository.save(n);
-        putCount++;
-        if (putCount % 5 === 0 || putCount === loadedNotes.length) {
-          setSyncProgressText(`Сохранение заметок: ${putCount}/${loadedNotes.length}`);
-        }
-      }
-
+      // We clear the whole repository previously, but now we should only save loaded ones?
+      // Wait, let's just save the stubs without content so we don't overwrite good content with empty content.
+      // Actually, if we just don't clear NoteRepository, it's safer. Let's just save loaded stubs.
+      
       setFolders(loadedFolders);
-      setNotes(loadedNotes);
+      setNotes(stubNotes);
 
-      if (loadedNotes.length > 0) {
+      if (stubNotes.length > 0) {
         setOpenNoteIds(prev => {
-          const validTabs = prev.filter(tabId => loadedNotes.some(n => n.id === tabId));
+          const validTabs = prev.filter(tabId => stubNotes.some(n => n.id === tabId));
           if (validTabs.length === 0) {
-            return [loadedNotes[0].id];
+            return [stubNotes[0].id];
           }
           return validTabs;
         });
 
-        const stillExists = loadedNotes.some(n => n.id === currentNoteId);
+        const stillExists = stubNotes.some(n => n.id === currentNoteId);
         if (!currentNoteId || !stillExists) {
-          setCurrentNoteId(loadedNotes[0].id);
+          setCurrentNoteId(stubNotes[0].id);
         }
       } else {
         setOpenNoteIds([]);
         setCurrentNoteId("");
       }
 
-      setSyncStatus("success");
-      setSyncProgressText("Синхронизация успешно завершена");
-      setTimeout(() => {
-        setSyncStatus("idle");
-        setSyncProgressText("");
-      }, 3000);
+      const notesToDownload = stubNotes.filter(n => n.isLoaded === false);
+      if (notesToDownload.length > 0) {
+        setIsVaultLoading(false); // User can interact with structure while downloading
+        downloadContentsInBatches(targetHandle, stubNotes).catch(console.error);
+      } else {
+        setSyncStatus("success");
+        setSyncProgressText("Синхронизация успешно завершена");
+        setTimeout(() => {
+          setSyncStatus("idle");
+          setSyncProgressText("");
+        }, 3000);
+      }
 
     } catch (err) {
       console.error("Synchronization failed", err);

@@ -37,6 +37,7 @@ import {
   CheckCircle2,
   Scissors,
   ArrowLeft,
+  Loader2,
 } from "lucide-react";
 
 interface EditorProps {
@@ -1097,7 +1098,13 @@ export default function Editor({
       )}
 
       {/* Editor Content Canvas */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
+        {note.isLoaded === false && (
+          <div className="absolute inset-0 bg-white/80 dark:bg-zinc-900/80 z-50 flex flex-col items-center justify-center backdrop-blur-[1px]">
+            <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-2" />
+            <span className="text-sm font-medium text-slate-500 dark:text-zinc-400">Loading content...</span>
+          </div>
+        )}
         
         {/* EDIT PANE */}
         {(mode === "edit" || mode === "split") && (

@@ -1,0 +1,7 @@
+- [x] Move root files and core services to their new folders (`src/app/`, `src/core/`, `src/shared/`)
+- [x] Move components and hooks to their respective feature directories (`notes`, `editor`, `graph`, `review`, `timeline`, `settings`, `vault`)
+- [x] Update all import statements across all files in the codebase
+- [x] Run build and verify the refactoring
+- [x] Implement the `useLayout` hook to isolate UI states and navigation history
+- [x] Refactor and align `MarkdownService` APIs, extracting transclusion and implementing backlinks and toc helpers
+- [x] Refactor and align `GraphService` APIs, implementing calculateLinks, findBacklinks, findNeighbors helpers and buildGraph

@@ -254,17 +254,14 @@ export function useNotes({
     NoteRepository.save(newNote).catch(console.error);
 
     if (vaultHandle) {
-      setVaultSavingIndicator(true);
-      try {
-        const fileHandle = await vaultHandle.getFileHandle(filename, { create: true });
-        const writable = await fileHandle.createWritable();
-        await writable.write(newNote.content);
-        await writable.close();
-      } catch (err) {
-        console.error("Failed to create file in vault", err);
-      } finally {
-        setVaultSavingIndicator(false);
-      }
+      pendingWritesRef.current.set(newNote.id, {
+        note: newNote,
+        oldTitle: null,
+        oldPath: undefined
+      });
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      // Let the flush write it in background
+      flushVaultWrites(true);
     }
   }, [vaultHandleRef, notesByTitle, generateUniqueTitle, selectNote, onNoteSelected, setVaultSavingIndicator]);
 
