@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Note } from "../../../shared/types/types";
 import { saveVaultHandle, getVaultHandle, clearVaultHandle } from "../../../core/db/db";
 import { NoteRepository } from "../../notes/repositories/NoteRepository";
+import { scanVault } from "../../../core/vault/VaultScanner";
 
 export interface UseWorkspaceParams {
   notesRef: React.MutableRefObject<Note[]>;
@@ -30,94 +31,6 @@ export function useWorkspace({
   const [isVaultLoading, setIsVaultLoading] = useState<boolean>(false);
   const [isVaultSaving, setIsVaultSaving] = useState<boolean>(false);
   const [isInitialSynced, setIsInitialSynced] = useState<boolean>(false);
-
-  const countFilesRecursively = async (dirHandle: any): Promise<number> => {
-    let count = 0;
-    for await (const entry of dirHandle.values()) {
-      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-      if (entry.kind === 'file' && entry.name.endsWith('.md')) {
-        count++;
-      } else if (entry.kind === 'directory') {
-        count += await countFilesRecursively(entry);
-      }
-    }
-    return count;
-  };
-
-  const getStructureRecursively = async (
-    dirHandle: any,
-    currentPath: string = "",
-    existingNotesMap: Map<string, Note> = new Map(),
-    onFileRead?: (current: number) => void,
-    progressCounter: { val: number } = { val: 0 },
-    cachedNotesMap: Map<string, Note> = new Map()
-  ): Promise<{ notes: Note[]; folders: string[] }> => {
-    let notesResult: Note[] = [];
-    let foldersResult: string[] = [];
-
-    for await (const entry of dirHandle.values()) {
-      if (entry.kind === 'file' && entry.name.endsWith('.md')) {
-        const id = currentPath ? `${currentPath}/${entry.name}` : entry.name;
-
-        if (pendingDeletionsRef.current.has(id)) {
-          continue;
-        }
-
-        progressCounter.val++;
-        if (onFileRead) {
-          onFileRead(progressCounter.val);
-        }
-
-        try {
-          const file = await entry.getFile();
-          const statDate = new Date(file.lastModified).toISOString();
-
-          const existing = existingNotesMap.get(id);
-          const isPendingWrite = pendingWritesRef.current.has(id);
-          const isCurrentNote = id === currentNoteId; // Проверяем, редактируется ли заметка прямо сейчас
-          
-          if (existing) {
-            const existingTime = new Date(existing.updatedAt).getTime();
-            // Если есть отложенная запись, или это текущая заметка, или файл на диске старее — сохраняем UI-версию
-            if (isPendingWrite || isCurrentNote || existingTime >= file.lastModified || existing.updatedAt === statDate) {
-              notesResult.push({ ...existing, isLoaded: true });
-              continue;
-            }
-          }
-
-          // Notes cached in IndexedDB by an earlier sync. Only an exact match
-          // with the file's mtime is trusted: sync stores updatedAt = mtime,
-          // while notes from non-vault mode (or edited since) carry some other
-          // timestamp and must not shadow what is on disk.
-          const cached = existing ? undefined : cachedNotesMap.get(id);
-          if (cached && cached.isLoaded !== false && cached.updatedAt === statDate) {
-            notesResult.push({ ...cached, isLoaded: true });
-            continue;
-          }
-
-          notesResult.push({
-            id,
-            title: entry.name.replace('.md', ''),
-            content: "", // Empty stub
-            createdAt: (existing ?? cached)?.createdAt ?? statDate,
-            updatedAt: statDate,
-            path: currentPath,
-            isLoaded: false // Needs content download
-          });
-        } catch (e) {
-          console.error("Error reading file", entry.name, e);
-        }
-      } else if (entry.kind === 'directory') {
-        if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-        const subPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
-        foldersResult.push(subPath);
-        const subData = await getStructureRecursively(entry, subPath, existingNotesMap, onFileRead, progressCounter, cachedNotesMap);
-        notesResult.push(...subData.notes);
-        foldersResult.push(...subData.folders);
-      }
-    }
-    return { notes: notesResult, folders: foldersResult };
-  };
 
   const getDirHandleByPath = useCallback(async (rootHandle: any, pathStr: string | undefined) => {
     if (!pathStr) return rootHandle;
@@ -203,9 +116,6 @@ export function useWorkspace({
     setSyncProgressText("Подсчет файлов на диске...");
 
     try {
-      const totalFiles = await countFilesRecursively(targetHandle);
-
-      setSyncProgressText(`Чтение структуры: 0/${totalFiles}`);
       const existingMap = new Map<string, Note>(notesRef.current.map(n => [n.id, n]));
 
       // At page load nothing is in memory yet, so every file would look new
@@ -217,14 +127,24 @@ export function useWorkspace({
         console.warn("Could not read cached notes, reading every file from disk", e);
       }
 
-      const { notes: stubNotes, folders: loadedFolders } = await getStructureRecursively(
-        targetHandle,
-        "",
-        existingMap,
-        (current) => setSyncProgressText(`Чтение структуры: ${current}/${totalFiles}`),
-        { val: 0 },
-        cachedMap
-      );
+      // Files are read concurrently, so progress can fire hundreds of times a
+      // second; every update re-renders the app, so report at most ~10/s.
+      let lastReport = 0;
+      const { notes: stubNotes, folders: loadedFolders } = await scanVault(targetHandle, {
+        existingNotes: existingMap,
+        cachedNotes: cachedMap,
+        currentNoteId,
+        isPendingDeletion: id => pendingDeletionsRef.current.has(id),
+        isPendingWrite: id => pendingWritesRef.current.has(id),
+        onListed: total => setSyncProgressText(`Чтение структуры: 0/${total}`),
+        onProgress: (done, total) => {
+          const now = Date.now();
+          if (done === total || now - lastReport >= 100) {
+            lastReport = now;
+            setSyncProgressText(`Чтение структуры: ${done}/${total}`);
+          }
+        },
+      });
 
       // We clear the whole repository previously, but now we should only save loaded ones?
       // Wait, let's just save the stubs without content so we don't overwrite good content with empty content.
