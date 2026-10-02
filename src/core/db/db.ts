@@ -118,6 +118,21 @@ export async function putNote(note: Note): Promise<void> {
   });
 }
 
+/** Writes many notes in one transaction instead of one transaction each. */
+export async function putNotes(notes: Note[]): Promise<void> {
+  if (notes.length === 0) return;
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, "readwrite");
+    const store = transaction.objectStore(STORE_NAME);
+    for (const note of notes) store.put(note);
+
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+}
+
 export async function deleteNote(id: string): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
