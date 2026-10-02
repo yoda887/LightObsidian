@@ -28,26 +28,20 @@ interface AutocompleteState {
   selectedIndex: number;
 }
 
-const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode: boolean = false, notes: Note[] = []) => {
-  // Escape HTML
-  let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+interface LineState {
+  /** True between a `:::test` line and its closing `:::` (the only state that carries across lines). */
+  inTestBlock: boolean;
+}
 
-  // Pre-process %% comments
-  const C_START = "___COMMENT_START___";
-  const C_END = "___COMMENT_END___";
-  html = html.replace(/%%([\s\S]*?)%%/g, (match) => {
-    return match.split('\n').map((part, i, arr) => {
-      let res = part;
-      if (i === 0) res = res.replace(/^%%/, '<span class="md-token">%%</span>');
-      if (i === arr.length - 1) res = res.replace(/%%$/, '<span class="md-token">%%</span>');
-      return `${C_START}${res}${C_END}`;
-    }).join('\n');
-  });
-
-  // Split by newline to process line by line
-  let inTestBlock = false;
-  const lines = html.split('\n');
-  const highlightedLines = lines.map((line, index) => {
+/** Highlights one already-HTML-escaped line. */
+export const highlightLine = (
+  line: string,
+  index: number,
+  activeLineIndex: number,
+  isZenMode: boolean,
+  notes: Note[],
+  state: LineState
+): string => {
     let zenClass = isZenMode ? (index === activeLineIndex ? ' zen-active' : ' zen-inactive') : '';
     
     // Headers
@@ -65,17 +59,17 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
     
     // Quiz / Test Blocks (Start and End tags)
     if (/^:::test$/.test(line)) {
-      inTestBlock = true;
+      state.inTestBlock = true;
       const visibility = (isZenMode && index !== activeLineIndex) ? " !h-0 !p-0 !m-0 !border-0 opacity-0 overflow-hidden" : " pt-1 pb-1";
       return `<span class="md-line${zenClass} inline-block w-full bg-indigo-50/70 dark:bg-indigo-900/30 border-l-[3px] border-indigo-500 font-mono text-indigo-400 opacity-70 text-[11px] uppercase tracking-widest pl-2 rounded-tr ${visibility}"><span class="md-token">:::test</span></span>`;
     }
-    if (/^:::$/.test(line) && inTestBlock) {
-      inTestBlock = false;
+    if (/^:::$/.test(line) && state.inTestBlock) {
+      state.inTestBlock = false;
       const visibility = (isZenMode && index !== activeLineIndex) ? " !h-0 !p-0 !m-0 !border-0 opacity-0 overflow-hidden" : " pt-1 pb-1";
       return `<span class="md-line${zenClass} inline-block w-full bg-indigo-50/70 dark:bg-indigo-900/30 border-l-[3px] border-indigo-500 font-mono text-indigo-400 opacity-70 text-[11px] uppercase tracking-widest pl-2 rounded-bl ${visibility}"><span class="md-token">:::</span></span>`;
     }
     
-    if (inTestBlock) {
+    if (state.inTestBlock) {
       if (line.match(/^-\s+\[[ x]\]/i)) {
         zenClass += " !ml-0 inline-block w-full bg-indigo-50/70 dark:bg-indigo-900/30 border-l-[3px] border-indigo-500 pl-8 text-slate-700 dark:text-slate-300";
       } else {
@@ -207,7 +201,30 @@ const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode
     processed = processed.replace(/(\^[\w\-]+)$/, '<span class="md-block-id font-mono text-[10px] text-violet-500 opacity-60 ml-2 select-none font-bold bg-violet-50 dark:bg-violet-950/40 px-1.5 py-0.5 rounded border border-violet-200/50 dark:border-violet-800/30">$1</span>');
 
     return `<span class="md-line${zenClass}">${processed}</span>`;
+};
+
+export const escapeHtml = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+export const highlightMarkdown = (text: string, activeLineIndex: number = -1, isZenMode: boolean = false, notes: Note[] = []) => {
+  // Escape HTML
+  let html = escapeHtml(text);
+
+  // Pre-process %% comments
+  const C_START = "___COMMENT_START___";
+  const C_END = "___COMMENT_END___";
+  html = html.replace(/%%([\s\S]*?)%%/g, (match) => {
+    return match.split('\n').map((part, i, arr) => {
+      let res = part;
+      if (i === 0) res = res.replace(/^%%/, '<span class="md-token">%%</span>');
+      if (i === arr.length - 1) res = res.replace(/%%$/, '<span class="md-token">%%</span>');
+      return `${C_START}${res}${C_END}`;
+    }).join('\n');
   });
+
+  // Split by newline to process line by line
+  const state: LineState = { inTestBlock: false };
+  const lines = html.split('\n');
+  const highlightedLines = lines.map((line, index) => highlightLine(line, index, activeLineIndex, isZenMode, notes, state));
 
   // Rejoin with newline characters and append <br/> to fix the trailing newline visual bug in contentEditable
   let finalHtml = highlightedLines.join('\n');
@@ -221,6 +238,10 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
     const editorRef = useRef<HTMLDivElement>(null);
     const isComposing = useRef(false);
     const previousContent = useRef(content);
+    // Text that handleInput just reported through onChange. When it comes back
+    // as `content` the DOM already shows it, so the sync effect can skip its
+    // own full-document comparison.
+    const inputSyncedText = useRef<string | null>(null);
     const [activeLineIndex, setActiveLineIndex] = useState(-1);
   
   const [autocomplete, setAutocomplete] = useState<AutocompleteState>({
@@ -253,6 +274,11 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
   // Initialize content
   useEffect(() => {
     if (editorRef.current) {
+      if (content === inputSyncedText.current && prevIsZenMode.current === isZenMode) {
+        inputSyncedText.current = null;
+        return;
+      }
+      inputSyncedText.current = null;
       if (getEditableText(editorRef.current) !== content || prevIsZenMode.current !== isZenMode) {
         // Save caret if we are just toggling zen mode so we don't lose it
         const caret = prevIsZenMode.current !== isZenMode ? getCaretOffset() : null;
@@ -390,8 +416,8 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
     }
   }));
 
-  const getCaretOffset = (): number => {
-    const el = editorRef.current;
+  // Editable text before the caret, counted from the start of `el`.
+  const caretOffsetWithin = (el: Node | null): number => {
     if (!el) return 0;
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) return 0;
@@ -424,8 +450,10 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
     return offset;
   };
 
-  const setCaretOffset = (offset: number) => {
-    const el = editorRef.current;
+  const getCaretOffset = (): number => caretOffsetWithin(editorRef.current);
+
+  // Puts the caret `offset` editable characters into `el`.
+  const placeCaretWithin = (el: Node | null, offset: number) => {
     if (!el) return;
     const sel = window.getSelection();
     if (!sel) return;
@@ -460,11 +488,9 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
     }
     
     if (nodeToFocus) {
-      const range = document.createRange();
-      range.setStart(nodeToFocus, nodeOffset);
-      range.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(range);
+      // One call instead of removeAllRanges() + addRange(): each of those
+      // forced a layout of the whole editor.
+      sel.collapse(nodeToFocus, nodeOffset);
       
       // Scroll parent element into view so the reading position is visible (fallback for typing, omitted precise restore)
       const parentEl = nodeToFocus.parentElement;
@@ -473,6 +499,8 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
       }
     }
   };
+
+  const setCaretOffset = (offset: number) => placeCaretWithin(editorRef.current, offset);
 
   const getCaretCoordinates = () => {
     const sel = window.getSelection();
@@ -483,15 +511,75 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
     return { x: rect.left, y: rect.bottom };
   };
 
-  const handleInput = () => {
+  // Typing re-rendered the whole document: every line re-highlighted, innerHTML
+  // replaced, selection rebuilt. The cost was almost all in the browser laying
+  // out the freshly rebuilt DOM (a 1000-line note took ~400ms per keystroke),
+  // not in the highlighting. For the plain case, replace just the line being
+  // edited. Anything unusual returns null and takes the full rebuild below.
+  const FAST_INPUT_TYPES = new Set(['insertText', 'deleteContentBackward', 'deleteContentForward']);
+
+  const patchEditedLine = (inputType: string | undefined): { text: string; caret: number } | null => {
+    const el = editorRef.current;
+    if (!el || isZenMode || !inputType || !FAST_INPUT_TYPES.has(inputType)) return null;
+
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !sel.isCollapsed || sel.anchorNode?.nodeType !== 3) return null;
+
+    // The line the caret is in: a direct child of the editor.
+    let lineEl: Node | null = sel.anchorNode;
+    while (lineEl && lineEl.parentNode !== el) lineEl = lineEl.parentNode;
+    if (!lineEl || lineEl.nodeType !== 1 || !(lineEl as HTMLElement).classList.contains('md-line')) return null;
+
+    // Comments and test blocks carry state across lines, so one edit could
+    // change how other lines look.
+    const previous = previousContent.current;
+    if (previous.includes('%%') || previous.includes(':::test')) return null;
+
+    // The DOM must still be exactly: line, "\n", line, ..., line, <br>.
+    const oldLines = previous.split('\n');
+    if (el.childNodes.length !== oldLines.length * 2) return null;
+    const position = Array.prototype.indexOf.call(el.childNodes, lineEl);
+    if (position < 0 || position % 2 !== 0) return null;
+    const lineIndex = position / 2;
+
+    const newLine = getEditableText(lineEl as HTMLElement);
+    if (newLine.includes('\n') || newLine.includes('%%') || newLine.includes(':::')) return null;
+
+    const template = document.createElement('template');
+    template.innerHTML = highlightLine(escapeHtml(newLine), lineIndex, -1, false, notes, { inTestBlock: false });
+    const replacement = template.content.firstElementChild;
+    if (!replacement) return null;
+
+    // Caret: characters in the lines before this one (known from the text we
+    // already hold) plus its position inside the line, so nothing walks the
+    // rest of the document.
+    const caretInLine = caretOffsetWithin(lineEl);
+    let lineStart = 0;
+    for (let i = 0; i < lineIndex; i++) lineStart += oldLines[i].length + 1;
+
+    el.replaceChild(replacement, lineEl);
+    placeCaretWithin(replacement, caretInLine);
+    oldLines[lineIndex] = newLine;
+    return { text: oldLines.join('\n'), caret: lineStart + caretInLine };
+  };
+
+  const handleInput = (e?: React.FormEvent<HTMLDivElement>) => {
     if (isComposing.current) return;
     if (!editorRef.current) return;
 
-    const caretOffset = getCaretOffset();
-    const newText = getEditableText(editorRef.current);
-    
-    if (newText !== previousContent.current) {
+    // patchEditedLine reads the caret itself before replacing the node it sits
+    // in; on the slow path nothing has been touched yet when we read it here.
+    const patched = patchEditedLine((e?.nativeEvent as InputEvent | undefined)?.inputType);
+    const caretOffset = patched ? patched.caret : getCaretOffset();
+    const newText = patched ? patched.text : getEditableText(editorRef.current);
+
+    if (patched) {
       previousContent.current = newText;
+      inputSyncedText.current = newText;
+      onChange(newText);
+    } else if (newText !== previousContent.current) {
+      previousContent.current = newText;
+      inputSyncedText.current = newText;
       onChange(newText);
       
       // Update HTML to reflect new highlighting
@@ -551,8 +639,11 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    const caretOffset = getCaretOffset();
-    const currentText = editorRef.current ? getEditableText(editorRef.current) : "";
+    // Walking the whole document for the caret and the text on every key is
+    // wasted work: only these keys use them (Enter and Tab recompute their own).
+    const needsDocState = e.key === '[' || e.key === 'Enter' || e.key === 'Tab';
+    const caretOffset = needsDocState ? getCaretOffset() : 0;
+    const currentText = needsDocState && editorRef.current ? getEditableText(editorRef.current) : "";
 
     // Intercept keys if autocomplete is active
     if (autocomplete.active) {
