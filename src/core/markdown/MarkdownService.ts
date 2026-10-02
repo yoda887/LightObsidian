@@ -1,5 +1,17 @@
 import { Note } from "../../shared/types/types";
 import { marked } from "marked";
+import DOMPurify from "dompurify";
+
+// Note content is arbitrary text from a vault that may have been synced from
+// somewhere else, and `marked` passes raw HTML straight through. Everything
+// that ends up in dangerouslySetInnerHTML goes through here first.
+export function sanitizeHtml(html: string): string {
+  return DOMPurify.sanitize(html, {
+    ADD_ATTR: ["target"],
+    // Keep data-note, which the preview uses to resolve wikilink clicks.
+    ALLOW_DATA_ATTR: true,
+  });
+}
 
 export interface ExtractedLink {
   target: string;
@@ -185,12 +197,14 @@ export async function parseMarkdownToHtml(content: string, notes: Note[] = [], d
 
   // Replace [[type:Note Title]] or [[Note Title|Custom Label]]
   const wikilinkRegex = /\[\[(?:([^\]|:]+):)?([^\]|]+)(?:\|([^\]]+))?\]\]/g;
-  return parsed.replace(wikilinkRegex, (_, typeMatch, target, label) => {
+  parsed = parsed.replace(wikilinkRegex, (_, typeMatch, target, label) => {
     const cleanTarget = target.trim();
     const displayLabel = label ? label.trim() : cleanTarget;
     const typeBadge = typeMatch ? `<span class="font-bold text-rose-600 dark:text-rose-400 mr-1">${typeMatch.trim()}:</span>` : "";
     return `${typeBadge}<span data-note="${encodeURIComponent(cleanTarget)}" class="wikilink cursor-pointer text-violet-600 dark:text-violet-400 hover:text-violet-500 dark:hover:text-violet-300 hover:underline font-semibold border-b border-dashed border-violet-400 transition-colors">${displayLabel}</span>`;
   });
+
+  return sanitizeHtml(parsed);
 }
 
 export function splitFrontmatter(content: string): { frontmatter: string; body: string } {
