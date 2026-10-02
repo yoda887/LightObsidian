@@ -227,7 +227,26 @@ export function updateYamlCardsInContent(
   return `---\n${finalFrontmatterLines.join('\n')}\n---\n${bodyText}`;
 }
 
+// Extraction is a pure function of one note, and note objects are never
+// mutated (an edit makes a new object), so each note's cards are computed once
+// per version of that note. Typing in one note re-parses only that note
+// instead of every note in the vault.
+const noteCardsCache = new WeakMap<Note, Flashcard[]>();
+
 export function extractFlashcards(notes: Note[]): Flashcard[] {
+  const cards: Flashcard[] = [];
+  for (const note of notes) {
+    let noteCards = noteCardsCache.get(note);
+    if (!noteCards) {
+      noteCards = computeFlashcards([note]);
+      noteCardsCache.set(note, noteCards);
+    }
+    for (const card of noteCards) cards.push(card);
+  }
+  return cards;
+}
+
+function computeFlashcards(notes: Note[]): Flashcard[] {
   const cards: Flashcard[] = [];
   
   for (const note of notes) {
