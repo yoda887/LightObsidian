@@ -150,20 +150,27 @@ export default function GraphView({ notes, currentNoteId, onSelectNote }: GraphV
       ctx.save();
       ctx.translate(panRef.current.x, panRef.current.y);
 
-      // Draw links
+      // Draw links, in order. Canvas state changes cost something, and at
+      // thousands of links nearly all of them were repeats of the previous
+      // link's style, so only touch it when the kind of link changes.
+      let styledAsTyped: boolean | null = null;
       links.forEach(link => {
         const sNode = nodeIndex.get(link.source);
         const tNode = nodeIndex.get(link.target);
         if (sNode && tNode) {
           ctx.beginPath();
-          if (link.type) {
-            ctx.strokeStyle = "rgba(225, 29, 72, 0.6)"; // rose-600
-            ctx.setLineDash([4, 4]);
-            ctx.lineWidth = 2;
-          } else {
-            ctx.strokeStyle = "rgba(99, 102, 241, 0.25)"; // indigo-500
-            ctx.setLineDash([]);
-            ctx.lineWidth = 1.8;
+          const typed = !!link.type;
+          if (typed !== styledAsTyped) {
+            styledAsTyped = typed;
+            if (typed) {
+              ctx.strokeStyle = "rgba(225, 29, 72, 0.6)"; // rose-600
+              ctx.setLineDash([4, 4]);
+              ctx.lineWidth = 2;
+            } else {
+              ctx.strokeStyle = "rgba(99, 102, 241, 0.25)"; // indigo-500
+              ctx.setLineDash([]);
+              ctx.lineWidth = 1.8;
+            }
           }
           ctx.moveTo(sNode.x, sNode.y);
           ctx.lineTo(tNode.x, tNode.y);

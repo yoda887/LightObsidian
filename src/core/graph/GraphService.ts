@@ -15,6 +15,214 @@ const MIN_REPEL_DISTANCE = 10;
 // Packs a (cellX, cellY) pair into one number; cellY stays well inside +-2^19.
 const CELL_STRIDE = 1 << 20;
 
+/**
+ * Exact repulsion. Only nodes closer than REPEL_CUTOFF interact, so bucket
+ * nodes into a grid of that cell size and compare each node with its 3x3
+ * neighbourhood instead of with every other node.
+ */
+export function repelGrid(nodes: GraphNode[], repelForce: number, selectedNode: GraphNode | null, isDragging: boolean): void {
+  // 1. Repulsion (Coulomb's law). Only nodes closer than REPEL_CUTOFF
+  // interact, so bucket nodes into a grid of that cell size and compare each
+  // node with its 3x3 neighbourhood instead of with every other node.
+  const grid = new Map<number, number[]>();
+  for (let i = 0; i < nodes.length; i++) {
+    const key = Math.floor(nodes[i].x / REPEL_CUTOFF) * CELL_STRIDE + Math.floor(nodes[i].y / REPEL_CUTOFF);
+    const bucket = grid.get(key);
+    if (bucket) bucket.push(i);
+    else grid.set(key, [i]);
+  }
+
+  for (let i = 0; i < nodes.length; i++) {
+    const n1 = nodes[i];
+    const cx = Math.floor(n1.x / REPEL_CUTOFF);
+    const cy = Math.floor(n1.y / REPEL_CUTOFF);
+
+    for (let ox = -1; ox <= 1; ox++) {
+      for (let oy = -1; oy <= 1; oy++) {
+        const bucket = grid.get((cx + ox) * CELL_STRIDE + (cy + oy));
+        if (!bucket) continue;
+
+        for (const j of bucket) {
+          if (j <= i) continue; // each pair once
+          const n2 = nodes[j];
+          const dx = n2.x - n1.x;
+          const dy = n2.y - n1.y;
+          const dist = Math.hypot(dx, dy) || 1;
+
+          if (dist < REPEL_CUTOFF) {
+            const softened = Math.max(dist, MIN_REPEL_DISTANCE);
+            const force = repelForce / (softened * softened);
+            const fx = (dx / dist) * force;
+            const fy = (dy / dist) * force;
+
+            if (!isDragging || selectedNode !== n1) {
+              n1.vx = (n1.vx || 0) - fx;
+              n1.vy = (n1.vy || 0) - fy;
+            }
+            if (!isDragging || selectedNode !== n2) {
+              n2.vx = (n2.vx || 0) + fx;
+              n2.vy = (n2.vy || 0) + fy;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Approximate repulsion for big graphs (Barnes-Hut)
+//
+// In a dense layout hundreds of nodes sit within REPEL_CUTOFF of each other, so
+// even the grid compares every node with a few hundred neighbours. A quadtree
+// lets a distant cluster stand in for all its nodes at once. The cutoff stays
+// exact: a cluster entirely beyond it is skipped, one that straddles it is
+// opened up, and only clusters wholly inside it are approximated.
+// ---------------------------------------------------------------------------
+
+// Above this many nodes the tree is used; smaller graphs keep exact forces.
+const TREE_THRESHOLD = 800;
+// A cluster of size s at distance d is approximated when s / d < THETA.
+const TREE_THETA = 0.7;
+const LEAF_SIZE = 8;
+const MAX_TREE_DEPTH = 24;
+
+let treeCap = 0;
+let cellX = new Float64Array(0), cellY = new Float64Array(0), cellHalf = new Float64Array(0);
+let cellMass = new Float64Array(0), cellComX = new Float64Array(0), cellComY = new Float64Array(0);
+let cellLo = new Int32Array(0), cellHi = new Int32Array(0), cellKids = new Int32Array(0);
+let order = new Int32Array(0), scratch = new Int32Array(0);
+const stack = new Int32Array(4 * (MAX_TREE_DEPTH + 2));
+
+function ensureTreeCapacity(n: number) {
+  if (n <= treeCap) return;
+  treeCap = Math.max(n, treeCap * 2);
+  const cells = 4 * treeCap + 16;
+  cellX = new Float64Array(cells); cellY = new Float64Array(cells); cellHalf = new Float64Array(cells);
+  cellMass = new Float64Array(cells); cellComX = new Float64Array(cells); cellComY = new Float64Array(cells);
+  cellLo = new Int32Array(cells); cellHi = new Int32Array(cells); cellKids = new Int32Array(cells * 4);
+  order = new Int32Array(treeCap); scratch = new Int32Array(treeCap);
+}
+
+/** Builds the tree over order[lo..hi) and returns the id of its root cell. */
+function buildCell(nodes: GraphNode[], lo: number, hi: number, cx: number, cy: number, half: number, depth: number, cells: { n: number }): number {
+  const id = cells.n++;
+  cellX[id] = cx; cellY[id] = cy; cellHalf[id] = half;
+  let sx = 0, sy = 0;
+  for (let k = lo; k < hi; k++) { const nd = nodes[order[k]]; sx += nd.x; sy += nd.y; }
+  const mass = hi - lo;
+  cellMass[id] = mass; cellComX[id] = sx / mass; cellComY[id] = sy / mass;
+  cellKids[id * 4] = cellKids[id * 4 + 1] = cellKids[id * 4 + 2] = cellKids[id * 4 + 3] = -1;
+
+  if (mass <= LEAF_SIZE || depth >= MAX_TREE_DEPTH) {
+    cellLo[id] = lo; cellHi[id] = hi; // leaf: its nodes are order[lo..hi)
+    return id;
+  }
+  cellLo[id] = 0; cellHi[id] = -1; // internal
+
+  // Partition order[lo..hi) by quadrant (counting sort through `scratch`).
+  const counts = [0, 0, 0, 0];
+  for (let k = lo; k < hi; k++) {
+    const nd = nodes[order[k]];
+    counts[(nd.x >= cx ? 1 : 0) + (nd.y >= cy ? 2 : 0)]++;
+  }
+  const starts = [lo, lo + counts[0], lo + counts[0] + counts[1], lo + counts[0] + counts[1] + counts[2]];
+  const fill = starts.slice();
+  for (let k = lo; k < hi; k++) {
+    const nd = nodes[order[k]];
+    scratch[fill[(nd.x >= cx ? 1 : 0) + (nd.y >= cy ? 2 : 0)]++] = order[k];
+  }
+  for (let k = lo; k < hi; k++) order[k] = scratch[k];
+
+  const q = half / 2;
+  for (let quad = 0; quad < 4; quad++) {
+    if (counts[quad] === 0) continue;
+    cellKids[id * 4 + quad] = buildCell(
+      nodes, starts[quad], starts[quad] + counts[quad],
+      cx + (quad & 1 ? q : -q), cy + (quad & 2 ? q : -q), q, depth + 1, cells
+    );
+  }
+  return id;
+}
+
+export function repelTree(nodes: GraphNode[], repelForce: number, selectedNode: GraphNode | null, isDragging: boolean): void {
+  const n = nodes.length;
+  if (n < 2) return;
+  ensureTreeCapacity(n);
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (let i = 0; i < n; i++) {
+    order[i] = i;
+    const nd = nodes[i];
+    if (nd.x < minX) minX = nd.x; if (nd.x > maxX) maxX = nd.x;
+    if (nd.y < minY) minY = nd.y; if (nd.y > maxY) maxY = nd.y;
+  }
+  const half = Math.max(maxX - minX, maxY - minY, 1) / 2 + 1e-6;
+  const cells = { n: 0 };
+  const root = buildCell(nodes, 0, n, (minX + maxX) / 2, (minY + maxY) / 2, half, 0, cells);
+
+  for (let i = 0; i < n; i++) {
+    const node = nodes[i];
+    if (isDragging && selectedNode === node) continue; // a dragged node is not pushed around
+    const x = node.x, y = node.y;
+    let fx = 0, fy = 0;
+
+    let top = 0;
+    stack[top++] = root;
+    while (top > 0) {
+      const c = stack[--top];
+
+      // Distance from the node to the nearest and farthest point of the cell.
+      const ax = Math.abs(x - cellX[c]), ay = Math.abs(y - cellY[c]), h = cellHalf[c];
+      const nearX = Math.max(ax - h, 0), nearY = Math.max(ay - h, 0);
+      if (nearX * nearX + nearY * nearY >= REPEL_CUTOFF * REPEL_CUTOFF) continue; // wholly out of range
+
+      const isLeaf = cellHi[c] >= 0;
+      if (!isLeaf) {
+        const dx = cellComX[c] - x, dy = cellComY[c] - y;
+        const dist = Math.hypot(dx, dy) || 1;
+        if ((2 * h) / dist < TREE_THETA) {
+          // Far enough to treat as one mass. Whether it is within range is
+          // decided by its centre: near the cutoff each node's push is tiny
+          // (600/250^2 ~ 0.01), so a cluster straddling the edge is not
+          // worth opening down to single nodes.
+          if (dist < REPEL_CUTOFF) {
+            const softened = Math.max(dist, MIN_REPEL_DISTANCE);
+            const force = (cellMass[c] * repelForce) / (softened * softened);
+            fx += (dx / dist) * force;
+            fy += (dy / dist) * force;
+          }
+          continue;
+        }
+      }
+
+      if (isLeaf) {
+        for (let k = cellLo[c]; k < cellHi[c]; k++) {
+          const j = order[k];
+          if (j === i) continue;
+          const dx = nodes[j].x - x, dy = nodes[j].y - y;
+          const dist = Math.hypot(dx, dy) || 1;
+          if (dist < REPEL_CUTOFF) {
+            const softened = Math.max(dist, MIN_REPEL_DISTANCE);
+            const force = repelForce / (softened * softened);
+            fx += (dx / dist) * force;
+            fy += (dy / dist) * force;
+          }
+        }
+      } else {
+        for (let quad = 0; quad < 4; quad++) {
+          const kid = cellKids[c * 4 + quad];
+          if (kid >= 0) stack[top++] = kid;
+        }
+      }
+    }
+
+    // Pairs push each other away: this node moves opposite to the net pull.
+    node.vx = (node.vx || 0) - fx;
+    node.vy = (node.vy || 0) - fy;
+  }
+}
+
 export const GraphService = {
   calculateLinks(notes: Note[]): GraphLink[] {
     // Index titles once: a notes.find() per link made this O(notes * links).
@@ -130,53 +338,9 @@ export const GraphService = {
     const { repelForce, k, centerGravity, width, height } = options;
     const index = options.nodeIndex ?? new Map(nodes.map(n => [n.id, n] as const));
 
-    // 1. Repulsion (Coulomb's law). Only nodes closer than REPEL_CUTOFF
-    // interact, so bucket nodes into a grid of that cell size and compare each
-    // node with its 3x3 neighbourhood instead of with every other node.
-    const grid = new Map<number, number[]>();
-    for (let i = 0; i < nodes.length; i++) {
-      const key = Math.floor(nodes[i].x / REPEL_CUTOFF) * CELL_STRIDE + Math.floor(nodes[i].y / REPEL_CUTOFF);
-      const bucket = grid.get(key);
-      if (bucket) bucket.push(i);
-      else grid.set(key, [i]);
-    }
-
-    for (let i = 0; i < nodes.length; i++) {
-      const n1 = nodes[i];
-      const cx = Math.floor(n1.x / REPEL_CUTOFF);
-      const cy = Math.floor(n1.y / REPEL_CUTOFF);
-
-      for (let ox = -1; ox <= 1; ox++) {
-        for (let oy = -1; oy <= 1; oy++) {
-          const bucket = grid.get((cx + ox) * CELL_STRIDE + (cy + oy));
-          if (!bucket) continue;
-
-          for (const j of bucket) {
-            if (j <= i) continue; // each pair once
-            const n2 = nodes[j];
-            const dx = n2.x - n1.x;
-            const dy = n2.y - n1.y;
-            const dist = Math.hypot(dx, dy) || 1;
-
-            if (dist < REPEL_CUTOFF) {
-              const softened = Math.max(dist, MIN_REPEL_DISTANCE);
-              const force = repelForce / (softened * softened);
-              const fx = (dx / dist) * force;
-              const fy = (dy / dist) * force;
-
-              if (!isDragging || selectedNode !== n1) {
-                n1.vx = (n1.vx || 0) - fx;
-                n1.vy = (n1.vy || 0) - fy;
-              }
-              if (!isDragging || selectedNode !== n2) {
-                n2.vx = (n2.vx || 0) + fx;
-                n2.vy = (n2.vy || 0) + fy;
-              }
-            }
-          }
-        }
-      }
-    }
+    // 1. Repulsion (Coulomb's law).
+    if (nodes.length > TREE_THRESHOLD) repelTree(nodes, repelForce, selectedNode, isDragging);
+    else repelGrid(nodes, repelForce, selectedNode, isDragging);
 
     // 2. Calculate spring attraction forces (Hooke's law)
     links.forEach(link => {

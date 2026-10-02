@@ -5,7 +5,6 @@ import { PendingRename } from "../../dialogs/hooks/useDialogs";
 import { MarkdownService } from "../../../core/markdown/MarkdownService";
 import { getVaultHandle } from "../../../core/db/db";
 import { DEFAULT_NOTES } from "../../../core/defaults/defaultNotes";
-import { ExportService } from "../../../core/export/ExportService";
 
 // How long an edit may sit in memory before it reaches the vault file.
 // beforeunload cannot await the asynchronous write, so this is also the
@@ -600,7 +599,9 @@ export function useNotes({
     }
   }, [notesByTitle, selectNote, createNote]);
 
-  const exportHtml = useCallback(() => {
+  const exportHtml = useCallback(async () => {
+    // The exporter is large and only needed here, so it is loaded on demand.
+    const { ExportService } = await import("../../../core/export/ExportService");
     const singleHtmlContent = ExportService.generateSingleHtmlApp(notes);
     const blob = new Blob([singleHtmlContent], { type: "text/html" });
     const link = document.createElement("a");
