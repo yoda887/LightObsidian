@@ -10,6 +10,7 @@ import TemplateModal from "./TemplateModal";
 import { AppSettings } from "../../settings/components/SettingsDialog";
 import { MarkdownService } from "../../../core/markdown/MarkdownService";
 import { FlashcardService } from "../../../core/flashcards/FlashcardService";
+import { NoteIndex } from "../../../core/index/NoteIndex";
 import {
   Heading1,
   Bold,
@@ -714,17 +715,7 @@ export default function Editor({
   // ----------------------------------------------------
   // TAG AUTOCOMPLETE ENGINE
   // ----------------------------------------------------
-  const allUniqueTags = useMemo(() => {
-    const tagRegex = /(?<=^|\s)#([\p{L}\p{N}_\-\/]+)/gu;
-    const tags = new Set<string>();
-    notes.forEach(n => {
-      let match;
-      while ((match = tagRegex.exec(n.content)) !== null) {
-        tags.add(match[1].trim());
-      }
-    });
-    return Array.from(tags);
-  }, [notes]);
+  const allUniqueTags = useMemo(() => NoteIndex.allTags(notes), [notes]);
 
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestionCoords, setSuggestionCoords] = useState({ top: 0, left: 0 });

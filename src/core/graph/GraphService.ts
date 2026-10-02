@@ -1,5 +1,5 @@
 import { Note, GraphNode, GraphLink } from "../../shared/types/types";
-import { extractWikilinks } from "../markdown/MarkdownService";
+import { wikilinksOf } from "../index/NoteIndex";
 
 // Above this many notes the initial layout switches from a ring to a spiral.
 const LARGE_GRAPH = 60;
@@ -27,7 +27,7 @@ export const GraphService = {
 
     const links: GraphLink[] = [];
     notes.forEach(note => {
-      const outgoing = extractWikilinks(note.content);
+      const outgoing = wikilinksOf(note);
       outgoing.forEach(link => {
         const targetNote = byTitle.get(link.target.toLowerCase());
         if (targetNote && targetNote.id !== note.id) {

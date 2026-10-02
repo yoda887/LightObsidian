@@ -3,6 +3,7 @@ import { Note } from "../../../shared/types/types";
 import { Link, Hash, X, Sparkles, RotateCcw, Check, FileText, Network, BarChart2, Award, BookOpen, Brain } from "lucide-react";
 import { Flashcard, FlashcardService } from "../../../core/flashcards/FlashcardService";
 import { MarkdownService } from "../../../core/markdown/MarkdownService";
+import { NoteIndex } from "../../../core/index/NoteIndex";
 
 interface RightSidebarProps {
   currentNote?: Note;
@@ -60,48 +61,45 @@ export default function RightSidebar({
       if (match[1].trim()) outLinks.add(match[1].trim());
     }
 
+    // Everything below is vault-wide, and this memo reruns on every keystroke
+    // (`notes` changes with each edit). NoteIndex caches the per-note part of
+    // the work, so only the note that was actually edited is re-scanned.
+
     // Extract incoming links (backlinks)
-    const inLinks = MarkdownService.backlinks(currentNote.id, currentNote.title, notes);
+    const inLinks = NoteIndex.backlinksOf(currentNote.id, currentNote.title, notes);
+    const inLinkIds = new Set(inLinks.map(n => n.id));
     const currentTitleLower = currentNote.title.toLowerCase();
 
     // Extract unlinked mentions: other notes that contain currentNote.title as plain text,
     // and are NOT already in inLinks.
     const unlinkedMentions = notes.filter(n => {
       if (n.id === currentNote.id) return false;
-      if (inLinks.some(linkNote => linkNote.id === n.id)) return false;
-      return n.content.toLowerCase().includes(currentTitleLower);
+      if (inLinkIds.has(n.id)) return false;
+      return NoteIndex.mentionsTitle(n, currentTitleLower);
     });
 
     // Extract tags from all notes: #word
-    const tagRegex = /(?<=^|\s)#([\p{L}\p{N}_\-\/]+)/gu;
-    const allTags = new Set<string>();
-    notes.forEach(n => {
-      let tMatch;
-      while ((tMatch = tagRegex.exec(n.content)) !== null) {
-        allTags.add(tMatch[1].trim());
-      }
-    });
+    const allTags = NoteIndex.allTags(notes);
+
+    // Lower-cased once, instead of once per candidate note.
+    const outLinksLower = new Set(Array.from(outLinks).map(link => link.toLowerCase()));
+    const currentContentLower = currentNote.content.toLowerCase();
 
     // Extract suggested links (current note mentions other note titles)
     const suggestedLinks = notes.filter(n => {
       if (n.id === currentNote.id) return false;
       const nTitleLower = n.title.toLowerCase();
-      const hasOutLink = Array.from(outLinks).some(link => link.toLowerCase() === nTitleLower);
-      if (hasOutLink) return false;
-      return currentNote.content.toLowerCase().includes(nTitleLower);
+      if (outLinksLower.has(nTitleLower)) return false;
+      return currentContentLower.includes(nTitleLower);
     });
 
     // Extract second-level connections (notes that share an outgoing link)
     const secondLevelLinks = notes.filter(n => {
       if (n.id === currentNote.id) return false;
-      if (inLinks.some(i => i.id === n.id)) return false;
-      const hasOutLink = Array.from(outLinks).some(link => link.toLowerCase() === n.title.toLowerCase());
-      if (hasOutLink) return false;
+      if (inLinkIds.has(n.id)) return false;
+      if (outLinksLower.has(n.title.toLowerCase())) return false;
 
-      const nOutLinks = Array.from(n.content.matchAll(/\[\[(.*?)\]\]/g)).map(m => m[1].trim().toLowerCase());
-      return nOutLinks.some(link => {
-        return Array.from(outLinks).some(o => o.toLowerCase() === link);
-      });
+      return NoteIndex.bracketTargetsOf(n).some(link => outLinksLower.has(link));
     });
 
     return {
@@ -110,7 +108,7 @@ export default function RightSidebar({
       unlinkedMentions: unlinkedMentions,
       suggestedLinks,
       secondLevelLinks,
-      tags: Array.from(allTags)
+      tags: allTags
     };
   }, [currentNote, notes]);
 
@@ -172,19 +170,13 @@ export default function RightSidebar({
   // SKILLS / XP CALCULATIONS
   // ----------------------------------------------------
   const skills = useMemo(() => {
-    const tagRegex = /(?<=^|\s)#([\p{L}\p{N}_\-\/]+)/gu;
     const allCards = FlashcardService.extractFlashcards(notes);
     
     const tagXP: Record<string, number> = {};
     const noteTags: Record<string, string[]> = {};
     
     notes.forEach(n => {
-      const tags = new Set<string>();
-      let match;
-      while ((match = tagRegex.exec(n.content)) !== null) {
-        tags.add(match[1].toLowerCase().trim());
-      }
-      noteTags[n.id] = Array.from(tags);
+      noteTags[n.id] = NoteIndex.tagsLowerOf(n);
     });
 
     allCards.forEach(c => {
