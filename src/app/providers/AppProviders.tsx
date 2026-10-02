@@ -56,6 +56,11 @@ export function useReviewContext() {
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
   const onNoteSelectedRef = React.useRef<any>(null);
+  const onNoteRenamedRef = React.useRef<((oldId: string, newId: string) => void) | null>(null);
+
+  const handleNoteRenamed = React.useCallback((oldId: string, newId: string) => {
+    onNoteRenamedRef.current?.(oldId, newId);
+  }, []);
 
   const settings = useSettings();
   const dialogs = useDialogs();
@@ -68,6 +73,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     setIsVaultSavingRef,
     setPendingRename: dialogs.setPendingRename,
     onNoteSelected: (id, options) => onNoteSelectedRef.current?.(id, options),
+    onNoteRenamed: handleNoteRenamed,
   });
 
   const layout = useLayout({
@@ -75,6 +81,8 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     setCurrentNoteId: notes.setCurrentNoteId,
     setOpenNoteIds: notes.setOpenNoteIds,
   });
+
+  onNoteRenamedRef.current = layout.remapNoteId;
 
   onNoteSelectedRef.current = (id: string, options?: { startReading?: boolean; anchor?: string | null }) => {
     layout.setActiveAnchor(options?.anchor || null);

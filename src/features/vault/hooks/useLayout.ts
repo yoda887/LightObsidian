@@ -31,6 +31,20 @@ export function useLayout({ currentNoteId, setCurrentNoteId, setOpenNoteIds }: U
     }
   }, [currentNoteId, history, historyIndex]);
 
+  // Renaming a note changes its id (the id is the file path), so everything
+  // keyed by id has to follow or it points at a note that no longer exists.
+  const remapNoteId = useCallback((oldId: string, newId: string) => {
+    if (oldId === newId) return;
+
+    setHistory(prev => prev.map(id => (id === oldId ? newId : id)));
+    setSessionOffsets(prev => {
+      if (!(oldId in prev)) return prev;
+      const { [oldId]: offset, ...rest } = prev;
+      return { ...rest, [newId]: offset };
+    });
+    setRestoreScrollNoteId(prev => (prev === oldId ? newId : prev));
+  }, []);
+
   const handleGoBack = useCallback(() => {
     if (historyIndex > 0) {
       const newIndex = historyIndex - 1;
@@ -70,5 +84,6 @@ export function useLayout({ currentNoteId, setCurrentNoteId, setOpenNoteIds }: U
     historyIndex,
     handleGoBack,
     handleGoForward,
+    remapNoteId,
   };
 }
