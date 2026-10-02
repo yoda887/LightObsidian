@@ -1,0 +1,32 @@
+name: CI
+
+# Runs on pull requests only. deploy.yml, which ships master to the server, is
+# untouched; this just makes sure a change type-checks and builds before it can
+# get there.
+on:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` installs exactly what package-lock.json says and fails if it
+      # and package.json have drifted apart.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
