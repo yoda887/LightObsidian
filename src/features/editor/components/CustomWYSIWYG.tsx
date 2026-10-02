@@ -516,7 +516,8 @@ export const CustomWYSIWYG = forwardRef<CustomWYSIWYGRef, CustomWYSIWYGProps>(
         y: coords.y > 0 ? coords.y : prev.y + 20, // rough guess if x=0
         selectedIndex: prev.active ? prev.selectedIndex : 0
       }));
-      setAutocomplete(prev => ({ ...prev, active: false }));
+    } else {
+      setAutocomplete(prev => (prev.active ? { ...prev, active: false } : prev));
     }
 
     updateActiveLine(caretOffset);
