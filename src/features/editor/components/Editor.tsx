@@ -588,16 +588,42 @@ export default function Editor({
     }
   };
 
-  // Parse markdown asynchronously when note content changes
+  // Parse markdown asynchronously when note content changes.
+  // Only the preview and split panes show the result, and a full re-parse
+  // (markdown + transclusion) per keystroke is expensive, so it is debounced
+  // while typing and run immediately when the note itself changes.
+  const isPreviewVisible = mode === "preview" || mode === "split";
+  const previewNoteIdRef = useRef<string | null>(null);
+  const wasPreviewVisibleRef = useRef(false);
+
   useEffect(() => {
+    if (!isPreviewVisible) {
+      wasPreviewVisibleRef.current = false;
+      return;
+    }
+
     let active = true;
-    MarkdownService.parseMarkdownToHtml(note.content, notes).then(html => {
-      if (active) {
-        setHtmlContent(html);
-      }
-    });
-    return () => { active = false; };
-  }, [note.content, notes]);
+    const immediate = previewNoteIdRef.current !== note.id || !wasPreviewVisibleRef.current;
+    previewNoteIdRef.current = note.id;
+    wasPreviewVisibleRef.current = true;
+
+    const run = () => {
+      MarkdownService.parseMarkdownToHtml(note.content, notes).then(html => {
+        if (active) setHtmlContent(html);
+      });
+    };
+
+    if (immediate) {
+      run();
+      return () => { active = false; };
+    }
+
+    const timer = setTimeout(run, 200);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [note.id, note.content, notes, isPreviewVisible]);
 
   // Insert markdown helper buttons
   const insertMarkdown = (before: string, after: string = "") => {

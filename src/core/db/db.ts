@@ -10,7 +10,21 @@ const STORE_NAME = "notes";
 const VAULT_STORE = "vault";
 const DB_VERSION = 2;
 
+// A single shared connection: every note keystroke saves, and opening a new
+// connection per operation made that dominate the cost of typing.
+let dbPromise: Promise<IDBDatabase> | null = null;
+
 export function openDB(): Promise<IDBDatabase> {
+  if (!dbPromise) {
+    dbPromise = connect().catch(err => {
+      dbPromise = null; // let the next call retry
+      throw err;
+    });
+  }
+  return dbPromise;
+}
+
+function connect(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
@@ -25,7 +39,20 @@ export function openDB(): Promise<IDBDatabase> {
     };
 
     request.onsuccess = (event) => {
-      resolve((event.target as IDBOpenDBRequest).result);
+      const db = (event.target as IDBOpenDBRequest).result;
+
+      // Drop the cached handle if the connection goes away, so the next
+      // call reopens instead of reusing a dead database.
+      const invalidate = () => {
+        if (dbPromise) dbPromise = null;
+      };
+      db.onclose = invalidate;
+      db.onversionchange = () => {
+        db.close();
+        invalidate();
+      };
+
+      resolve(db);
     };
 
     request.onerror = (event) => {
