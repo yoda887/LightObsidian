@@ -1,5 +1,5 @@
 import { Note } from "../../../shared/types/types";
-import { getAllNotes, putNote, deleteNote, clearNotes } from "../../../core/db/db";
+import { getAllNotes, putNote, putNotes, deleteNote, clearNotes } from "../../../core/db/db";
 
 export const NoteRepository = {
   async loadAll(): Promise<Note[]> {
@@ -8,6 +8,10 @@ export const NoteRepository = {
 
   async save(note: Note): Promise<void> {
     return putNote(note);
+  },
+
+  async saveMany(notes: Note[]): Promise<void> {
+    return putNotes(notes);
   },
 
   async delete(id: string): Promise<void> {

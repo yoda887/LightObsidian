@@ -7,6 +7,13 @@ import React, { useEffect, useRef, useState } from "react";
 import { Note, GraphNode, GraphLink } from "../../../shared/types/types";
 import { GraphService } from "../../../core/graph/GraphService";
 
+// The simulation parks itself once nodes stop moving, instead of redrawing
+// the whole canvas 60 times a second forever.
+const SETTLED_SPEED = 0.1;       // px/tick: below this nothing visibly moves
+const SETTLED_FRAMES = 20;       // ...for this many frames in a row
+// Dense layouts may jitter above SETTLED_SPEED indefinitely; stop anyway.
+const MAX_TICKS_PER_WAKE = 600;
+
 interface GraphViewProps {
   notes: Note[];
   currentNoteId: string;
@@ -23,6 +30,12 @@ export default function GraphView({ notes, currentNoteId, onSelectNote }: GraphV
   // Physics states kept in refs for fast tick updates without triggering React re-renders
   const nodesRef = useRef<GraphNode[]>([]);
   const linksRef = useRef<GraphLink[]>([]);
+  const nodeIndexRef = useRef<Map<string, GraphNode>>(new Map());
+  // Both restart the animation loop after it parked itself (see simulate):
+  // wake resumes the physics, redraw paints a single frame without moving
+  // anything (pan, theme change, resize).
+  const wakeRef = useRef<() => void>(() => {});
+  const redrawRef = useRef<() => void>(() => {});
   const selectedNodeRef = useRef<GraphNode | null>(null);
   const isDraggingNodeRef = useRef(false);
   const panRef = useRef(pan);
@@ -30,6 +43,7 @@ export default function GraphView({ notes, currentNoteId, onSelectNote }: GraphV
   // Sync pan reference
   useEffect(() => {
     panRef.current = pan;
+    redrawRef.current();
   }, [pan]);
 
   // Initialize nodes and links
@@ -47,6 +61,8 @@ export default function GraphView({ notes, currentNoteId, onSelectNote }: GraphV
 
     nodesRef.current = newNodes;
     linksRef.current = newLinks;
+    nodeIndexRef.current = new Map(newNodes.map(n => [n.id, n]));
+    wakeRef.current();
   }, [notes, currentNoteId]);
 
   // Handle Resize of canvas to fill parent container
@@ -58,6 +74,7 @@ export default function GraphView({ notes, currentNoteId, onSelectNote }: GraphV
       
       canvas.width = container.clientWidth;
       canvas.height = container.clientHeight;
+      redrawRef.current(); // resizing cleared the canvas
     };
 
     handleResize();
@@ -78,26 +95,55 @@ export default function GraphView({ notes, currentNoteId, onSelectNote }: GraphV
     const repelForce = 600; // Repulsion constant
     const centerGravity = 0.012; // Force pulling nodes to absolute center
     
+    let running = false;
+    let physicsAwake = true;
+    let settledFrames = 0;
+    let ticksSinceWake = 0;
+
+    const start = () => {
+      if (!running) {
+        running = true;
+        animationFrameId = requestAnimationFrame(simulate);
+      }
+    };
+    const wake = () => {
+      physicsAwake = true;
+      settledFrames = 0;
+      ticksSinceWake = 0;
+      start();
+    };
+    // While parked this paints exactly one frame; while running it is a no-op.
+    const redraw = start;
+    wakeRef.current = wake;
+    redrawRef.current = redraw;
+
     const simulate = () => {
       const canvas = canvasRef.current;
-      if (!canvas) return;
+      if (!canvas) {
+        running = false;
+        return;
+      }
 
       const nodes = nodesRef.current;
       const links = linksRef.current;
+      const nodeIndex = nodeIndexRef.current;
       const ctx = canvas.getContext("2d");
       if (!ctx || nodes.length === 0) {
-        animationFrameId = requestAnimationFrame(simulate);
+        running = false; // woken again when notes load
         return;
       }
 
       // Compute forces and update node positions
-      GraphService.computeForces(nodes, links, selectedNodeRef.current, isDraggingNodeRef.current, {
-        repelForce,
-        k,
-        centerGravity,
-        width: canvas.width,
-        height: canvas.height,
-      });
+      const maxSpeed = physicsAwake
+        ? GraphService.computeForces(nodes, links, selectedNodeRef.current, isDraggingNodeRef.current, {
+            repelForce,
+            k,
+            centerGravity,
+            width: canvas.width,
+            height: canvas.height,
+            nodeIndex,
+          })
+        : 0;
 
       // 3. Render Canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -106,8 +152,8 @@ export default function GraphView({ notes, currentNoteId, onSelectNote }: GraphV
 
       // Draw links
       links.forEach(link => {
-        const sNode = nodes.find(n => n.id === link.source);
-        const tNode = nodes.find(n => n.id === link.target);
+        const sNode = nodeIndex.get(link.source);
+        const tNode = nodeIndex.get(link.target);
         if (sNode && tNode) {
           ctx.beginPath();
           if (link.type) {
@@ -173,11 +219,35 @@ export default function GraphView({ notes, currentNoteId, onSelectNote }: GraphV
       });
 
       ctx.restore();
+
+      // Park the loop once the layout has stopped moving (a node being
+      // dragged keeps it alive), or after a bounded number of ticks. A
+      // redraw-only frame parks immediately.
+      if (physicsAwake) {
+        ticksSinceWake++;
+        settledFrames = !isDraggingNodeRef.current && maxSpeed < SETTLED_SPEED ? settledFrames + 1 : 0;
+        if (settledFrames >= SETTLED_FRAMES || ticksSinceWake >= MAX_TICKS_PER_WAKE) physicsAwake = false;
+      }
+      if (!physicsAwake) {
+        running = false;
+        return;
+      }
       animationFrameId = requestAnimationFrame(simulate);
     };
 
-    animationFrameId = requestAnimationFrame(simulate);
-    return () => cancelAnimationFrame(animationFrameId);
+    wake();
+
+    // Colours are read from the theme on every draw, so redraw when it flips.
+    const themeObserver = new MutationObserver(redraw);
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+
+    return () => {
+      themeObserver.disconnect();
+      cancelAnimationFrame(animationFrameId);
+      running = false;
+      wakeRef.current = () => {};
+      redrawRef.current = () => {};
+    };
   }, []);
 
   // Mouse interaction triggers
@@ -202,6 +272,7 @@ export default function GraphView({ notes, currentNoteId, onSelectNote }: GraphV
     if (clickedNode) {
       selectedNodeRef.current = clickedNode;
       isDraggingNodeRef.current = true;
+      wakeRef.current();
     } else {
       setIsDraggingCanvas(true);
       setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
@@ -218,6 +289,7 @@ export default function GraphView({ notes, currentNoteId, onSelectNote }: GraphV
       selectedNodeRef.current.y = e.clientY - rect.top - pan.y;
       selectedNodeRef.current.vx = 0;
       selectedNodeRef.current.vy = 0;
+      wakeRef.current();
     } else if (isDraggingCanvas) {
       setPan({
         x: e.clientX - dragStart.x,
@@ -227,12 +299,15 @@ export default function GraphView({ notes, currentNoteId, onSelectNote }: GraphV
   };
 
   const handleMouseUp = () => {
-    if (isDraggingNodeRef.current && selectedNodeRef.current) {
-      onSelectNote(selectedNodeRef.current.id);
+    // Also fires on mouse-leave, so only a finished node drag counts here.
+    const wasDraggingNode = isDraggingNodeRef.current && selectedNodeRef.current;
+    if (wasDraggingNode) {
+      onSelectNote(selectedNodeRef.current!.id);
     }
     isDraggingNodeRef.current = false;
     selectedNodeRef.current = null;
     setIsDraggingCanvas(false);
+    if (wasDraggingNode) wakeRef.current(); // let the neighbours settle
   };
 
   return (

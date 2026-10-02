@@ -49,7 +49,8 @@ export function useWorkspace({
     currentPath: string = "",
     existingNotesMap: Map<string, Note> = new Map(),
     onFileRead?: (current: number) => void,
-    progressCounter: { val: number } = { val: 0 }
+    progressCounter: { val: number } = { val: 0 },
+    cachedNotesMap: Map<string, Note> = new Map()
   ): Promise<{ notes: Note[]; folders: string[] }> => {
     let notesResult: Note[] = [];
     let foldersResult: string[] = [];
@@ -84,11 +85,21 @@ export function useWorkspace({
             }
           }
 
+          // Notes cached in IndexedDB by an earlier sync. Only an exact match
+          // with the file's mtime is trusted: sync stores updatedAt = mtime,
+          // while notes from non-vault mode (or edited since) carry some other
+          // timestamp and must not shadow what is on disk.
+          const cached = existing ? undefined : cachedNotesMap.get(id);
+          if (cached && cached.isLoaded !== false && cached.updatedAt === statDate) {
+            notesResult.push({ ...cached, isLoaded: true });
+            continue;
+          }
+
           notesResult.push({
             id,
             title: entry.name.replace('.md', ''),
             content: "", // Empty stub
-            createdAt: existing ? existing.createdAt : statDate,
+            createdAt: (existing ?? cached)?.createdAt ?? statDate,
             updatedAt: statDate,
             path: currentPath,
             isLoaded: false // Needs content download
@@ -100,7 +111,7 @@ export function useWorkspace({
         if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
         const subPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
         foldersResult.push(subPath);
-        const subData = await getStructureRecursively(entry, subPath, existingNotesMap, onFileRead, progressCounter);
+        const subData = await getStructureRecursively(entry, subPath, existingNotesMap, onFileRead, progressCounter, cachedNotesMap);
         notesResult.push(...subData.notes);
         foldersResult.push(...subData.folders);
       }
@@ -129,49 +140,53 @@ export function useWorkspace({
     setSyncStatus("syncing");
     setSyncProgressText(`Загрузка контента: 0/${notesToDownload.length}`);
 
-    const batchSize = 10;
-    let completedCount = 0;
+    // A fixed pool of readers, not batches: a batch waits for its slowest
+    // file, which on a high-latency drive leaves most slots idle.
+    const CONCURRENCY = 10;
+    // Every setNotes re-renders the whole app, so results are applied in
+    // bursts instead of once per file (or per ten files).
+    const FLUSH_INTERVAL_MS = 400;
 
-    for (let i = 0; i < notesToDownload.length; i += batchSize) {
-      const batch = notesToDownload.slice(i, i + batchSize);
-      
-      const updatedBatchNotes = await Promise.all(batch.map(async (stubNote) => {
+    let nextIndex = 0;
+    let completedCount = 0;
+    let pending = new Map<string, Note>();
+    let lastFlush = Date.now();
+
+    const flush = (force: boolean) => {
+      if (pending.size === 0) return;
+      if (!force && Date.now() - lastFlush < FLUSH_INTERVAL_MS) return;
+
+      const batch = pending;
+      pending = new Map();
+      lastFlush = Date.now();
+
+      NoteRepository.saveMany([...batch.values()]).catch(console.error);
+      setSyncProgressText(`Загрузка контента: ${completedCount}/${notesToDownload.length}`);
+      // Only fill in notes that are still stubs, never overwrite an edit.
+      setNotes(prev => prev.map(n => (n.isLoaded === false ? batch.get(n.id) ?? n : n)));
+    };
+
+    const worker = async () => {
+      while (nextIndex < notesToDownload.length) {
+        const stubNote = notesToDownload[nextIndex++];
         try {
           const dirHandle = await getDirHandleByPath(targetHandle, stubNote.path);
           const fileHandle = await dirHandle.getFileHandle(`${stubNote.title}.md`);
           const file = await fileHandle.getFile();
           const content = await file.text();
-          
-          const fullNote: Note = {
-            ...stubNote,
-            content,
-            isLoaded: true
-          };
-          
-          await NoteRepository.save(fullNote);
-          return fullNote;
+          pending.set(stubNote.id, { ...stubNote, content, isLoaded: true });
         } catch (e) {
           console.error(`Failed to download content for ${stubNote.id}`, e);
-          return stubNote;
         }
-      }));
+        completedCount++;
+        flush(false);
+      }
+    };
 
-      completedCount += batch.length;
-      setSyncProgressText(`Загрузка контента: ${completedCount}/${notesToDownload.length}`);
-
-      setNotes(prev => {
-        const newNotes = [...prev];
-        for (const updatedNote of updatedBatchNotes) {
-          if (updatedNote.isLoaded) {
-            const index = newNotes.findIndex(n => n.id === updatedNote.id);
-            if (index !== -1) {
-              newNotes[index] = updatedNote;
-            }
-          }
-        }
-        return newNotes;
-      });
-    }
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, notesToDownload.length) }, worker)
+    );
+    flush(true);
 
     setSyncStatus("success");
     setSyncProgressText("Синхронизация успешно завершена");
@@ -192,12 +207,23 @@ export function useWorkspace({
 
       setSyncProgressText(`Чтение структуры: 0/${totalFiles}`);
       const existingMap = new Map<string, Note>(notesRef.current.map(n => [n.id, n]));
-      
+
+      // At page load nothing is in memory yet, so every file would look new
+      // and be read in full. Consult the copy kept in IndexedDB first.
+      let cachedMap = new Map<string, Note>();
+      try {
+        cachedMap = new Map((await NoteRepository.loadAll()).map(n => [n.id, n] as const));
+      } catch (e) {
+        console.warn("Could not read cached notes, reading every file from disk", e);
+      }
+
       const { notes: stubNotes, folders: loadedFolders } = await getStructureRecursively(
         targetHandle,
         "",
         existingMap,
-        (current) => setSyncProgressText(`Чтение структуры: ${current}/${totalFiles}`)
+        (current) => setSyncProgressText(`Чтение структуры: ${current}/${totalFiles}`),
+        { val: 0 },
+        cachedMap
       );
 
       // We clear the whole repository previously, but now we should only save loaded ones?
