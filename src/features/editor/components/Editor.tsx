@@ -287,7 +287,7 @@ export default function Editor({
       ir_next_read: nextReadStr,
       ir_interval: newInterval,
       ir_ease: newEase,
-      ir_last_offset: lastOffsetRef.current
+      ir_last_offset: (flushCaretOffset(), lastOffsetRef.current)
     });
     
     onUpdateNote(note.id, { content: newContent });
@@ -411,14 +411,39 @@ export default function Editor({
   const lastOffsetRef = useRef(0);
   const hasRestoredScrollRef = useRef(false);
 
-  const handleEditorCaretChange = () => {
-    let offset = 0;
-    if (mode === "dynamic" && wysiwygRef.current) {
-      offset = wysiwygRef.current.getCaretOffset();
+  // Leaves the last known value alone if the editor it would read from is
+  // already gone (a deferred read can fire just after a mode switch).
+  const readCaretOffset = () => {
+    if (mode === "dynamic") {
+      if (wysiwygRef.current) lastOffsetRef.current = wysiwygRef.current.getCaretOffset();
     } else if (textareaRef.current) {
-      offset = textareaRef.current.selectionStart;
+      lastOffsetRef.current = textareaRef.current.selectionStart;
     }
-    lastOffsetRef.current = offset;
+  };
+
+  // In dynamic mode finding the caret walks the document, and this runs on
+  // every key and click. The value is only read on a user action and when
+  // leaving the note, so a burst of keystrokes does one read, and
+  // flushCaretOffset() brings it up to date before either of those reads.
+  const caretReadTimerRef = useRef<number | null>(null);
+
+  const handleEditorCaretChange = () => {
+    if (mode !== "dynamic") {
+      readCaretOffset();
+      return;
+    }
+    if (caretReadTimerRef.current !== null) return;
+    caretReadTimerRef.current = window.setTimeout(() => {
+      caretReadTimerRef.current = null;
+      readCaretOffset();
+    }, 150);
+  };
+
+  const flushCaretOffset = () => {
+    if (caretReadTimerRef.current === null) return;
+    window.clearTimeout(caretReadTimerRef.current);
+    caretReadTimerRef.current = null;
+    readCaretOffset();
   };
 
   const handleScroll = (scrollTop: number, scrollHeight: number, clientHeight: number) => {
@@ -481,6 +506,7 @@ export default function Editor({
     
     return () => {
       if (timer) clearTimeout(timer);
+      flushCaretOffset();
       if (lastOffsetRef.current > 0 && !shouldRestoreScroll) {
         onSaveSessionOffset?.(note.id, lastOffsetRef.current);
       }

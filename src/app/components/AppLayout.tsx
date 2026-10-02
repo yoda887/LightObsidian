@@ -3,20 +3,35 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from "react";
+import React, { Suspense, lazy, useEffect, useState } from "react";
 import Sidebar from "../../features/vault/components/Sidebar";
 import Editor from "../../features/editor/components/Editor";
-import GraphView from "../../features/graph/components/GraphView";
 import RightSidebar from "../../features/notes/components/RightSidebar";
-import SettingsDialog from "../../features/settings/components/SettingsDialog";
-import ReviewModal from "../../features/review/components/ReviewModal";
 import RenameLinksModal from "../../features/vault/components/RenameLinksModal";
-import TimelineView from "../../features/timeline/components/TimelineView";
-import HelpDialog from "../../features/settings/components/HelpDialog";
 import TopBar from "./TopBar";
 import TabBar from "./TabBar";
 import StatusBar from "./StatusBar";
 import { FileText } from "lucide-react";
+
+// Screens and dialogs that are only reached by clicking something are loaded
+// on first use instead of being part of the first download.
+const GraphView = lazy(() => import("../../features/graph/components/GraphView"));
+const TimelineView = lazy(() => import("../../features/timeline/components/TimelineView"));
+const SettingsDialog = lazy(() => import("../../features/settings/components/SettingsDialog"));
+const ReviewModal = lazy(() => import("../../features/review/components/ReviewModal"));
+const HelpDialog = lazy(() => import("../../features/settings/components/HelpDialog"));
+
+/**
+ * True from the first time `open` is true onwards. The dialogs are rendered
+ * with an isOpen flag and keep their state while closed, so once one has been
+ * opened it stays mounted exactly as before; it just is not loaded (or
+ * mounted) until the first time it is wanted.
+ */
+function useOpenedOnce(open: boolean): boolean {
+  const [seen, setSeen] = useState(open);
+  if (open && !seen) setSeen(true);
+  return seen;
+}
 
 import {
   useSettingsContext,
@@ -70,7 +85,6 @@ export default function AppLayout() {
     openDailyNote: handleOpenDailyNote,
     openRandomNote: handleOpenRandomNote,
     handleWikilinkClick,
-    exportHtml: handleExportHtml,
   } = notesHook;
 
   const {
@@ -114,6 +128,10 @@ export default function AppLayout() {
     clearFocusQueue,
     clearReviewLog,
   } = review;
+
+  const settingsEverOpened = useOpenedOnce(isSettingsOpen);
+  const reviewEverOpened = useOpenedOnce(isReviewOpen);
+  const helpEverOpened = useOpenedOnce(isHelpOpen);
 
   const [sidebarInitialTab, setSidebarInitialTab] = useState<"links" | "tags" | "context" | "focus" | "graph">("links");
 
@@ -169,7 +187,6 @@ export default function AppLayout() {
           onSelectNote={handleSelectNote}
           onCreateNote={handleCreateNote}
           onDeleteNote={handleDeleteNote}
-          onExportHtml={handleExportHtml}
           darkMode={darkMode}
           onToggleTheme={handleToggleTheme}
           onOpenVault={openVault}
@@ -206,16 +223,20 @@ export default function AppLayout() {
           {/* WORKSPACE TAB RENDERING */}
           <div className="flex-1 overflow-hidden relative">
             {appMode === "graph" ? (
-              <GraphView
-                notes={notes}
-                currentNoteId={currentNoteId}
-                onSelectNote={handleSelectNote}
-              />
+              <Suspense fallback={null}>
+                <GraphView
+                  notes={notes}
+                  currentNoteId={currentNoteId}
+                  onSelectNote={handleSelectNote}
+                />
+              </Suspense>
             ) : appMode === "timeline" ? (
-              <TimelineView
-                notes={notes}
-                onSelectNote={handleSelectNote}
-              />
+              <Suspense fallback={null}>
+                <TimelineView
+                  notes={notes}
+                  onSelectNote={handleSelectNote}
+                />
+              </Suspense>
             ) : currentNote ? (
               <Editor
                 note={currentNote}
@@ -286,31 +307,39 @@ export default function AppLayout() {
         />
       )}
 
-      <SettingsDialog
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        settings={appSettings}
-        onSettingsChange={setAppSettings}
-      />
+      <Suspense fallback={null}>
+        {settingsEverOpened && (
+          <SettingsDialog
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+            settings={appSettings}
+            onSettingsChange={setAppSettings}
+          />
+        )}
 
-      <ReviewModal
-        isOpen={isReviewOpen}
-        onClose={() => {
-          setIsReviewOpen(false);
-          if (focusQueue.length > 0) {
-            setSidebarInitialTab("focus");
-            setIsRightSidebarOpen(true);
-          }
-        }}
-        dueCards={dueCards}
-        onReviewCard={handleReviewCard}
-        onNavigateToNote={handleSelectNote}
-      />
+        {reviewEverOpened && (
+          <ReviewModal
+            isOpen={isReviewOpen}
+            onClose={() => {
+              setIsReviewOpen(false);
+              if (focusQueue.length > 0) {
+                setSidebarInitialTab("focus");
+                setIsRightSidebarOpen(true);
+              }
+            }}
+            dueCards={dueCards}
+            onReviewCard={handleReviewCard}
+            onNavigateToNote={handleSelectNote}
+          />
+        )}
 
-      <HelpDialog
-        isOpen={isHelpOpen}
-        onClose={() => setIsHelpOpen(false)}
-      />
+        {helpEverOpened && (
+          <HelpDialog
+            isOpen={isHelpOpen}
+            onClose={() => setIsHelpOpen(false)}
+          />
+        )}
+      </Suspense>
 
       <RenameLinksModal
         isOpen={!!pendingRename}

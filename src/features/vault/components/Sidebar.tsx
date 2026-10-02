@@ -7,7 +7,7 @@ import { useState } from "react";
 import { Note } from "../../../shared/types/types";
 //import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock } from "lucide-react";
 //import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock, AlertTriangle } from "lucide-react";
-import { Search, Plus, Trash2, BookOpen, Download, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock, AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { Search, Plus, Trash2, BookOpen, ChevronRight, ChevronDown, FileEdit, FolderPlus, Calendar, Dices, ArrowDownAZ, ArrowDownZA, Clock, AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 
 // interface SidebarProps {
 //   notes: Note[];
@@ -36,7 +36,6 @@ interface SidebarProps {
   onSelectNote: (id: string, options?: { startReading?: boolean }) => void;
   onCreateNote: (title?: string) => void; // Исправлено: title?: string
   onDeleteNote: (id: string) => void;
-  onExportHtml: () => void; // Исправлено: убран аргумент note
   darkMode: boolean;
   onToggleTheme: () => void;
   onOpenVault?: () => void;
@@ -236,7 +235,6 @@ export default function Sidebar({
   onSelectNote,
   onCreateNote,
   onDeleteNote,
-  onExportHtml,
   darkMode,
   onToggleTheme,
   onOpenVault,
