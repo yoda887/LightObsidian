@@ -599,19 +599,6 @@ export function useNotes({
     }
   }, [notesByTitle, selectNote, createNote]);
 
-  const exportHtml = useCallback(async () => {
-    // The exporter is large and only needed here, so it is loaded on demand.
-    const { ExportService } = await import("../../../core/export/ExportService");
-    const singleHtmlContent = ExportService.generateSingleHtmlApp(notes);
-    const blob = new Blob([singleHtmlContent], { type: "text/html" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "obsidian_standalone.html";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }, [notes]);
-
   // Load notes on initial load
   useEffect(() => {
     const initData = async () => {
@@ -715,6 +702,5 @@ export function useNotes({
     openDailyNote,
     openRandomNote,
     handleWikilinkClick,
-    exportHtml,
   };
 }

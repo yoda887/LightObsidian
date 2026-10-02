@@ -85,7 +85,6 @@ export default function AppLayout() {
     openDailyNote: handleOpenDailyNote,
     openRandomNote: handleOpenRandomNote,
     handleWikilinkClick,
-    exportHtml: handleExportHtml,
   } = notesHook;
 
   const {
@@ -188,7 +187,6 @@ export default function AppLayout() {
           onSelectNote={handleSelectNote}
           onCreateNote={handleCreateNote}
           onDeleteNote={handleDeleteNote}
-          onExportHtml={handleExportHtml}
           darkMode={darkMode}
           onToggleTheme={handleToggleTheme}
           onOpenVault={openVault}
