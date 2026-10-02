@@ -7,11 +7,18 @@ import { getVaultHandle } from "../../../core/db/db";
 import { DEFAULT_NOTES } from "../../../core/defaults/defaultNotes";
 import { ExportService } from "../../../core/export/ExportService";
 
+// How long an edit may sit in memory before it reaches the vault file.
+// beforeunload cannot await the asynchronous write, so this is also the
+// window in which closing the tab loses the file-system copy of an edit.
+// (The IndexedDB copy is written straight away, on every change.)
+const VAULT_WRITE_DEBOUNCE_MS = 1500;
+
 export interface UseNotesParams {
   vaultHandleRef: React.MutableRefObject<any>;
   setIsVaultSavingRef: React.MutableRefObject<(val: boolean) => void>;
   setPendingRename: React.Dispatch<React.SetStateAction<PendingRename | null>>;
   onNoteSelected?: (id: string, options?: { startReading?: boolean; anchor?: string | null }) => void;
+  onNoteRenamed?: (oldId: string, newId: string) => void;
 }
 
 export function useNotes({
@@ -19,6 +26,7 @@ export function useNotes({
   setIsVaultSavingRef,
   setPendingRename,
   onNoteSelected,
+  onNoteRenamed,
 }: UseNotesParams) {
   const [notes, setNotes] = useState<Note[]>([]);
   const notesRef = useRef(notes);
@@ -343,6 +351,9 @@ export function useNotes({
         setCurrentNoteId(pending.updatedNote.id);
       }
       setOpenNoteIds(prev => prev.map(tabId => tabId === pending.oldNote.id ? pending.updatedNote.id : tabId));
+      // A note's id is its file path, so anything else keyed by id (navigation
+      // history, reading offsets) would keep pointing at a note that is gone.
+      onNoteRenamed?.(pending.oldNote.id, pending.updatedNote.id);
     }
 
     if (pending.filenameChanged) {
@@ -376,12 +387,12 @@ export function useNotes({
       if (pending.filenameChanged) {
         flushVaultWrites(true);
       } else {
-        saveTimeoutRef.current = setTimeout(() => flushVaultWrites(), 10000);
+        saveTimeoutRef.current = setTimeout(() => flushVaultWrites(), VAULT_WRITE_DEBOUNCE_MS);
       }
     }
     
     setPendingRename(null);
-  }, [vaultHandleRef, currentNoteId, flushVaultWrites, setPendingRename]);
+  }, [vaultHandleRef, currentNoteId, flushVaultWrites, setPendingRename, onNoteRenamed]);
 
   const saveNote = useCallback(async (id: string, updates: Partial<Note>) => {
     if (updates.title !== undefined) {

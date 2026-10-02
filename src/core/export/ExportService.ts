@@ -1,9 +1,27 @@
 import { Note } from "../../shared/types/types";
 
+// Markers around the embedded data so the standalone app can re-export itself
+// without having to guess at the surrounding source code.
+const NOTES_START = "/*__NOTES_START__*/";
+const NOTES_END = "/*__NOTES_END__*/";
+
+/**
+ * Makes a JSON payload safe to inline inside a <script> block.
+ * JSON.stringify leaves "</script>" untouched, which would close the tag and
+ * break the whole exported file; U+2028/U+2029 are line terminators that are
+ * not allowed raw inside JS string literals.
+ */
+function escapeForScriptTag(json: string): string {
+  return json
+    .replace(/</g, "\\u003c")
+    .replace(new RegExp("\\u2028", "g"), "\\u2028")
+    .replace(new RegExp("\\u2029", "g"), "\\u2029");
+}
+
 export const ExportService = {
   generateSingleHtmlApp(notes: Note[]): string {
-    const notesJson = JSON.stringify(notes, null, 2);
-    
+    const notesJson = escapeForScriptTag(JSON.stringify(notes, null, 2));
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -65,16 +83,40 @@ export const ExportService = {
       background: rgba(156, 163, 175, 0.5);
     }
     
-    /* Markdown Previews */
-    .markdown-body h1 { @apply text-2xl font-bold mt-6 mb-3 border-b border-gray-200 dark:border-gray-800 pb-1; }
-    .markdown-body h2 { @apply text-xl font-bold mt-5 mb-2; }
-    .markdown-body h3 { @apply text-lg font-semibold mt-4 mb-2; }
-    .markdown-body p { @apply my-2 leading-relaxed; }
-    .markdown-body ul { @apply list-disc list-inside my-2 pl-4; }
-    .markdown-body ol { @apply list-decimal list-inside my-2 pl-4; }
-    .markdown-body code { @apply font-mono text-sm bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded text-rose-500 dark:text-rose-400; }
-    .markdown-body pre { @apply bg-gray-900 text-gray-100 p-3 rounded my-3 overflow-x-auto font-mono text-sm; }
-    .markdown-body blockquote { @apply border-l-4 border-violet-500 pl-4 py-1 my-3 bg-violet-50 dark:bg-violet-950/20 rounded-r italic text-gray-700 dark:text-gray-300; }
+    /* Markdown Previews.
+       Plain CSS on purpose: the Tailwind CDN only expands @apply inside
+       <style type="text/tailwindcss">, so these rules used to do nothing. */
+    .markdown-body h1 {
+      font-size: 1.5rem; line-height: 2rem; font-weight: 700;
+      margin: 1.5rem 0 0.75rem; padding-bottom: 0.25rem;
+      border-bottom: 1px solid rgb(229 231 235);
+    }
+    .dark .markdown-body h1 { border-bottom-color: rgb(31 41 55); }
+    .markdown-body h2 { font-size: 1.25rem; line-height: 1.75rem; font-weight: 700; margin: 1.25rem 0 0.5rem; }
+    .markdown-body h3 { font-size: 1.125rem; line-height: 1.75rem; font-weight: 600; margin: 1rem 0 0.5rem; }
+    .markdown-body p { margin: 0.5rem 0; line-height: 1.625; }
+    .markdown-body ul { list-style-type: disc; list-style-position: inside; margin: 0.5rem 0; padding-left: 1rem; }
+    .markdown-body ol { list-style-type: decimal; list-style-position: inside; margin: 0.5rem 0; padding-left: 1rem; }
+    .markdown-body code {
+      font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.875rem;
+      background: rgb(243 244 246); color: rgb(244 63 94);
+      padding: 0.125rem 0.25rem; border-radius: 0.25rem;
+    }
+    .dark .markdown-body code { background: rgb(31 41 55); color: rgb(251 113 133); }
+    .markdown-body pre {
+      background: rgb(17 24 39); color: rgb(243 244 246);
+      padding: 0.75rem; border-radius: 0.25rem; margin: 0.75rem 0;
+      overflow-x: auto; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.875rem;
+    }
+    .markdown-body pre code { background: transparent; color: inherit; padding: 0; }
+    .markdown-body blockquote {
+      border-left: 4px solid rgb(139 92 246); padding: 0.25rem 0 0.25rem 1rem;
+      margin: 0.75rem 0; background: rgb(245 243 255);
+      border-radius: 0 0.25rem 0.25rem 0; font-style: italic; color: rgb(55 65 81);
+    }
+    .dark .markdown-body blockquote { background: rgb(46 16 101 / 0.2); color: rgb(209 213 219); }
+    .markdown-body a { color: rgb(124 58 237); text-decoration: underline; }
+    .dark .markdown-body a { color: rgb(167 139 250); }
   </style>
 </head>
 <body class="bg-slate-50 dark:bg-zinc-950 text-slate-800 dark:text-zinc-200 font-sans h-screen flex flex-col overflow-hidden transition-colors duration-200">
@@ -194,7 +236,7 @@ export const ExportService = {
 
   <script>
     // Embedded initial data
-    const EMBEDDED_NOTES = ${notesJson};
+    const EMBEDDED_NOTES = ${NOTES_START}${notesJson}${NOTES_END};
 
     // App state
     let notes = [];
@@ -217,10 +259,19 @@ export const ExportService = {
     let selectedGraphNode = null;
     let isDraggingNode = false;
 
+    // Storage helpers. A file:// origin is opaque in some browsers, where
+    // touching localStorage throws; this file has to keep working there.
+    function lsGet(key) {
+      try { return localStorage.getItem(key); } catch (e) { return null; }
+    }
+    function lsSet(key, value) {
+      try { localStorage.setItem(key, value); return true; } catch (e) { return false; }
+    }
+
     // Load state
     function init() {
       // Check localStorage first
-      const stored = localStorage.getItem("lite_obsidian_notes");
+      const stored = lsGet("lite_obsidian_notes");
       if (stored) {
         try {
           notes = JSON.parse(stored);
@@ -235,7 +286,7 @@ export const ExportService = {
         notes = [{
           id: "welcome",
           title: "Welcome Note",
-          content: "# Welcome to Lite Obsidian\\\\n\\\\nThis is your lightweight knowledge base analogue of Obsidian. \\\\n\\\\n## Key Features:\\\\n- **Markdown Support**: Style your text easily.\\\\n- **Wikilinks**: Type '[[Another Note]]' to link notes. Click the link to instantly jump or create that note!\\\\n- **Backlinks**: See which notes refer to the current one at the bottom of the Preview tab.\\\\n- **Connection Graph**: Switch to the Graph Connection tab to visualize your knowledge database!\\\\n- **Standalone Exporter**: Click 'Export HTA/HTML' to download a new compiled file with your latest changes inside it. You can rename it to '.hta' for instant Windows app conversion!\\\\n\\\\nTry clicking this link to make a new note: [[My Ideas]]",
+          content: "# Welcome to Lite Obsidian\\n\\nThis is your lightweight knowledge base analogue of Obsidian. \\n\\n## Key Features:\\n- **Markdown Support**: Style your text easily.\\n- **Wikilinks**: Type '[[Another Note]]' to link notes. Click the link to instantly jump or create that note!\\n- **Backlinks**: See which notes refer to the current one at the bottom of the Preview tab.\\n- **Connection Graph**: Switch to the Graph Connection tab to visualize your knowledge database!\\n- **Standalone Exporter**: Click 'Export HTA/HTML' to download a new compiled file with your latest changes inside it. You can rename it to '.hta' for instant Windows app conversion!\\n\\nTry clicking this link to make a new note: [[My Ideas]]",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }];
@@ -246,7 +297,8 @@ export const ExportService = {
       currentNoteId = notes[0].id;
 
       // Dark Mode setup
-      if (localStorage.getItem("theme") === "dark" || (!("theme" in localStorage) && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+      const storedTheme = lsGet("theme");
+      if (storedTheme === "dark" || (!storedTheme && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
         isDarkMode = true;
         document.documentElement.classList.add("dark");
       } else {
@@ -257,7 +309,7 @@ export const ExportService = {
       updateThemeButton();
       
       // YAML setup
-      hideYaml = localStorage.getItem("hide_yaml") === "true";
+      hideYaml = lsGet("hide_yaml") === "true";
       isYamlCollapsed = hideYaml;
       document.getElementById("hide-yaml-checkbox").checked = hideYaml;
       
@@ -283,7 +335,7 @@ export const ExportService = {
 
     // Save Notes helper
     function saveNotes() {
-      localStorage.setItem("lite_obsidian_notes", JSON.stringify(notes));
+      lsSet("lite_obsidian_notes", JSON.stringify(notes));
     }
 
     // Toggle Dark Mode
@@ -291,10 +343,10 @@ export const ExportService = {
       isDarkMode = !isDarkMode;
       if (isDarkMode) {
         document.documentElement.classList.add("dark");
-        localStorage.setItem("theme", "dark");
+        lsSet("theme", "dark");
       } else {
         document.documentElement.classList.remove("dark");
-        localStorage.setItem("theme", "light");
+        lsSet("theme", "light");
       }
       updateThemeButton();
     }
@@ -355,7 +407,7 @@ export const ExportService = {
       const newNote = {
         id: "note_" + Date.now(),
         title: title,
-        content: "# " + title + "\\\\n\\\\nStart writing something here...",
+        content: "# " + title + "\\n\\nStart writing something here...",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -395,7 +447,7 @@ export const ExportService = {
 
     function toggleHideYaml() {
       hideYaml = document.getElementById("hide-yaml-checkbox").checked;
-      localStorage.setItem("hide_yaml", hideYaml ? "true" : "false");
+      lsSet("hide_yaml", hideYaml ? "true" : "false");
       isYamlCollapsed = hideYaml;
       const note = notes.find(n => n.id === currentNoteId);
       if (note) {
@@ -419,11 +471,11 @@ export const ExportService = {
         return;
       }
 
-      const frontmatterRegex = /^---\\\\r?\\\\n([\\\\s\\\\S]*?\\\\r?\\\\n)---(?:\\\\r?\\\\n|$)/;
+      const frontmatterRegex = /^---\\r?\\n([\\s\\S]*?\\r?\\n)---(?:\\r?\\n|$)/;
       const match = (note.content || "").match(frontmatterRegex);
       const frontmatter = match ? match[0] : "";
       const yamlInner = frontmatter
-        ? frontmatter.replace(/^---\\\\r?\\\\n/, "").replace(/\\\\r?\\\\n---(?:\\\\r?\\\\n|$)/, "")
+        ? frontmatter.replace(/^---\\r?\\n/, "").replace(/\\r?\\n---(?:\\r?\\n|$)/, "")
         : "";
       
       const keyCount = yamlInner ? yamlInner.split('\\n').filter(Boolean).length : 0;
@@ -451,13 +503,13 @@ export const ExportService = {
     function handleYamlEditorChange(newYaml) {
       const note = notes.find(n => n.id === currentNoteId);
       if (note) {
-        const frontmatterRegex = /^---\\\\r?\\\\n([\\\\s\\\\S]*?\\\\r?\\\\n)---(?:\\\\r?\\\\n|$)/;
+        const frontmatterRegex = /^---\\r?\\n([\\s\\S]*?\\r?\\n)---(?:\\r?\\n|$)/;
         const match = (note.content || "").match(frontmatterRegex);
         const currentFrontmatter = match ? match[0] : "";
         const body = (note.content || "").substring(currentFrontmatter.length);
         
         const trimmedYaml = newYaml.trim();
-        const newFrontmatter = trimmedYaml ? "---\\\\n" + trimmedYaml + "\\\\n---\\\\n" : "";
+        const newFrontmatter = trimmedYaml ? "---\\n" + trimmedYaml + "\\n---\\n" : "";
         note.content = newFrontmatter + body;
         note.updatedAt = new Date().toISOString();
         saveNotes();
@@ -470,8 +522,8 @@ export const ExportService = {
 
     function parseYamlMetadata(yamlText) {
       const metadata = {};
-      const cleanYaml = yamlText.replace(/^---\\\\r?\\\\n/, "").replace(/\\\\r?\\\\n---(?:\\\\r?\\\\n|$)/, "");
-      const lines = cleanYaml.split(/\\\\r?\\\\n/);
+      const cleanYaml = yamlText.replace(/^---\\r?\\n/, "").replace(/\\r?\\n---(?:\\r?\\n|$)/, "");
+      const lines = cleanYaml.split(/\\r?\\n/);
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith("#")) continue;
@@ -516,7 +568,7 @@ export const ExportService = {
       document.getElementById("note-title-input").value = note.title;
 
       // Split frontmatter and body
-      const frontmatterRegex = /^---\\\\r?\\\\n([\\\\s\\\\S]*?\\\\r?\\\\n)---(?:\\\\r?\\\\n|$)/;
+      const frontmatterRegex = /^---\\r?\\n([\\s\\S]*?\\r?\\n)---(?:\\r?\\n|$)/;
       const match = (note.content || "").match(frontmatterRegex);
       let frontmatter = "";
       let body = note.content || "";
@@ -572,7 +624,7 @@ export const ExportService = {
       const note = notes.find(n => n.id === currentNoteId);
       if (note) {
         if (hideYaml) {
-          const frontmatterRegex = /^---\\\\r?\\\\n([\\\\s\\\\S]*?\\\\r?\\\\n)---(?:\\\\r?\\\\n|$)/;
+          const frontmatterRegex = /^---\\r?\\n([\\s\\S]*?\\r?\\n)---(?:\\r?\\n|$)/;
           const match = (note.content || "").match(frontmatterRegex);
           const currentFrontmatter = match ? match[0] : "";
           note.content = currentFrontmatter + val;
@@ -592,7 +644,7 @@ export const ExportService = {
 
       // Note Metadata Block
       const previewYamlContainer = document.getElementById("preview-yaml-container");
-      const frontmatterRegex = /^---\\\\r?\\\\n([\\\\s\\\\S]*?\\\\r?\\\\n)---(?:\\\\r?\\\\n|$)/;
+      const frontmatterRegex = /^---\\r?\\n([\\s\\S]*?\\r?\\n)---(?:\\r?\\n|$)/;
       const match = (note.content || "").match(frontmatterRegex);
       const frontmatter = match ? match[0] : "";
       
@@ -646,19 +698,19 @@ export const ExportService = {
 
       // HTML Render
       let cleanContent = (note.content || "").replace(frontmatterRegex, "");
-      cleanContent = cleanContent.replace(/%%([\\\\s\\\\S]*?)%%/g, '<!--$1-->');
+      cleanContent = cleanContent.replace(/%%([\\s\\S]*?)%%/g, '<!--$1-->');
       let rawHtml = marked.parse(cleanContent, { breaks: true, gfm: true });
       
       // Parse Flashcards
-      rawHtml = rawHtml.replace(/<p>(.+?)\\\\s+::\\\\s+(.+?)<\\\\/p>/g, function(match, q, a) {
+      rawHtml = rawHtml.replace(/<p>(.+?)\\s+::\\s+(.+?)<\\/p>/g, function(match, q, a) {
         return '<p>' + q + ' <span class="text-indigo-400 dark:text-indigo-600 font-bold mx-1">::</span> <span class="group relative inline-flex min-w-[2rem] bg-amber-100 dark:bg-amber-900/40 px-1.5 rounded-sm border-b-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap">' + a + '</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">...</span></span></p>';
       });
 
       // Parse Cloze Deletions
-      rawHtml = rawHtml.replace(/\\\\{\\\\{(.*?)\\\\}\\\\}/g, '<span class="group relative inline-flex min-w-[2rem] bg-amber-100 dark:bg-amber-900/40 px-1.5 rounded-sm border-b-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap">$1</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">...</span></span>');
+      rawHtml = rawHtml.replace(/\\{\\{(.*?)\\}\\}/g, '<span class="group relative inline-flex min-w-[2rem] bg-amber-100 dark:bg-amber-900/40 px-1.5 rounded-sm border-b-2 border-amber-500 font-medium cursor-help transition-all duration-200"><span class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-amber-800 dark:text-amber-300 whitespace-pre-wrap">$1</span><span class="absolute inset-0 flex items-center justify-center text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity duration-200 text-xs font-bold tracking-widest">...</span></span>');
       
       // Parse [[Wikilinks]]
-      const wikilinkRegex = /\\\\\\\\\\\\[\\\\\\\\\\\\[([^\\\\\\\\\\\\]|]+)(?:\\\\\\\\\\\\|[^\\\\\\\\\\\\]]+)?\\\\\\\\\\\\]\\\\\\\\\\\\]/g;
+      const wikilinkRegex = /\\[\\[([^\\]|]+)(?:\\|[^\\]]+)?\\]\\]/g;
       const linkedHtml = rawHtml.replace(wikilinkRegex, (_, target, label) => {
         const cleanTarget = target.trim();
         const displayLabel = label ? label.trim() : cleanTarget;
@@ -683,7 +735,7 @@ export const ExportService = {
       const linkingNotes = notes.filter(n => {
         if (n.id === currentNoteId) return false;
         // Simple scan for wikilink format referencing this title
-        const regex = new RegExp("\\\\\\\\\\\\\\\\\\\\[\\\\\\\\\\\\\\\\\\\\[\\\\\\\\\\\\\\\\\\\\\\\\s*" + escapeRegExp(noteTitle) + "\\\\\\\\\\\\\\\\\\\\\\\\s*(?:\\\\\\\\\\\\\\\\\\\\\\\\|.*?)?\\\\\\\\\\\\\\\\\\\\\\]\\\\\\\\\\\\\\\\\\\\]", "i");
+        const regex = new RegExp("\\\\[\\\\[\\\\s*" + escapeRegExp(noteTitle) + "\\\\s*(?:\\\\|.*?)?\\\\]\\\\]", "i");
         return regex.test(n.content);
       });
 
@@ -704,7 +756,7 @@ export const ExportService = {
     }
 
     function escapeRegExp(string) {
-      return string.replace(/[.*+?^\\\${}()|[\\\\\\\\]\\\\\\\\]/g, '\\\\\\\\$&');
+      return string.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&');
     }
 
     // Navigate to a note by its title
@@ -714,7 +766,7 @@ export const ExportService = {
         selectNote(found.id);
       } else {
         // Create it automatically
-        if (confirm("Note \\\\\\\"" + title + "\\\\\\\" does not exist. Would you like to create it?")) {
+        if (confirm("Note \\"" + title + "\\" does not exist. Would you like to create it?")) {
           createNewNote(title);
         }
       }
@@ -762,15 +814,35 @@ export const ExportService = {
     }
 
     // Exporter
+    // Keeps "</scr" + "ipt>" inside notes from closing this tag, see escapeForScriptTag.
+    function escapeForScriptTag(json) {
+      const bs = String.fromCharCode(92);
+      return json
+        .replace(/</g, bs + "u003c")
+        .replace(/\\u2028/g, bs + "u2028")
+        .replace(/\\u2029/g, bs + "u2029");
+    }
+
     function exportSelf() {
-      const currentNotesString = JSON.stringify(notes, null, 2);
-      
-      // Fetch current source code
-      let source = document.documentElement.outerHTML;
-      
-      // We need to replace EMBEDDED_NOTES assignment in the file
-      const updatedSource = "<!" + "DOCTYPE html>\\\\n" + source.replace(/const EMBEDDED_NOTES = [\\\\s\\\\S]*?\\\\n\\\\s*\\\\/\\\\/ App state/g, "const EMBEDDED_NOTES = " + currentNotesString + ";\\\\n\\\\n    // App state");
-      
+      // Built by concatenation so these literals don't match themselves below.
+      const START = "/*__NOTES" + "_START__*/";
+      const END = "/*__NOTES" + "_END__*/";
+
+      const source = document.documentElement.outerHTML;
+      const startIdx = source.indexOf(START);
+      const endIdx = source.indexOf(END);
+
+      if (startIdx === -1 || endIdx === -1 || endIdx < startIdx) {
+        alert("Could not locate the embedded notes block, export aborted.");
+        return;
+      }
+
+      const updatedSource =
+        "<!" + "DOCTYPE html>\\n" +
+        source.slice(0, startIdx + START.length) +
+        escapeForScriptTag(JSON.stringify(notes, null, 2)) +
+        source.slice(endIdx);
+
       const blob = new Blob([updatedSource], { type: "text/html" });
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
@@ -814,7 +886,7 @@ export const ExportService = {
       graphLinks = [];
       notes.forEach(note => {
         // Extract links
-        const regex = /\\\\\\\\\\\\\\\\[\\\\\\\\\\\\\\\\[([^\\\\\\\\\\\\\\\\]|]+)(?:\\\\\\\\\\\\\\\\|[^\\\\\\\\\\\\\\\\]]+)?\\\\\\\\\\\\\\\\]\\\\\\\\\\\\\\\\]/g;
+        const regex = /\\[\\[([^\\]|]+)(?:\\|[^\\]]+)?\\]\\]/g;
         let match;
         while ((match = regex.exec(note.content)) !== null) {
           const targetTitle = match[1].trim().toLowerCase();

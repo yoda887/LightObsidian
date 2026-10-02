@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Note } from "../../../shared/types/types";
 import { FlashcardService, Flashcard } from "../../../core/flashcards/FlashcardService";
 
@@ -32,7 +32,9 @@ export function useReview({ notes, onUpdateNote }: UseReviewOptions) {
     localStorage.setItem("lite_obsidian_review_log", JSON.stringify(reviewLog));
   }, [reviewLog]);
 
-  const dueCards = FlashcardService.getDueCards(notes);
+  // Scans every note with a pile of regexes, so it must not run on each
+  // render of the provider (i.e. on every keystroke in the editor).
+  const dueCards = useMemo(() => FlashcardService.getDueCards(notes), [notes]);
 
   const handleReviewCard = async (card: Flashcard, grade: "hard" | "good" | "easy") => {
     const note = notes.find(n => n.id === card.noteId);
